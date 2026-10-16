@@ -289,18 +289,10 @@ Alongside the working application, our team will develop and publish at least tw
 
 Our immediate goal is to deliver a reliable MVP within the hackathon timeline, evaluate its core functionality, and make basic interactive workout assistance more accessible.
 
-## 19. AI and Reuse Disclosure
+## 19. Team & Hackathon Details
 
-The final public repository will document:
-
-- AI development tools used by the team.
-- The AI model and API used for coaching.
-- Open-source libraries and third-party services integrated into the project.
-- Reused DevMarketplace Code Gigs or other components.
-- Relevant licenses and attribution.
-- Original code and reusable components created by the team during the hackathon.
-
-Only components actually used in the submitted project will be listed as integrated dependencies, and only work genuinely created by the team during the event will be presented as original Code Gigs.
-----
-
-**Specification status:** Proposed hackathon MVP. Authentication, 2FA, persistent storage, deployment, and Code Gig publication must be implemented and tested before being claimed as completed.
+- **Project:** AI Real-Time Gym Coach
+- **Team Name:** Team Kaizen
+- **Team Members:** Lead: Safa Khurram , Member: Izma Warsia 
+- **University:** NED University of Engineering & Technology
+- **Event:** DevMarketplace Hackathon
