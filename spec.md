@@ -6,11 +6,14 @@
 
 ## 2. Problem Statement
 
-People who exercise at home, particularly students, beginners, and budget-conscious individuals, often lack access to personal fitness trainers. They may struggle to count repetitions, maintain proper exercise technique, and receive timely feedback during workouts.
+People who exercise at home, particularly beginners and students with limited budgets, often lack access to a personal fitness trainer. They may struggle to count repetitions accurately, maintain consistent exercise technique, and receive timely feedback while working out.
 
-Traditional workout videos demonstrate exercises but do not respond to a user's live movements, automatically count repetitions, or provide feedback based on their current exercise performance.
+Existing workout videos demonstrate exercises but generally do not analyze users' live movements, automatically count repetitions, or respond to exercise-specific events.
 
-**Problem:** How can we make interactive, real-time workout guidance more accessible to people who cannot regularly access a personal trainer?
+Hiring a personal trainer can be expensive, while exercising without feedback may leave users uncertain about their technique and progress.
+
+**Problem:** How can we make basic, interactive workout guidance more accessible to people who cannot regularly access a personal trainer?
+
 
 ## 3. Target Users
 
@@ -50,8 +53,6 @@ The goal is to combine movement tracking and interactive coaching in one accessi
 - Individual user profiles.
 - Private workout history associated with the authenticated user.
 
-Authentication must be implemented using a real authentication service or a properly secured backend, rather than a username-only entry field.
-
 ### 6.2 Workout Planning
 
 - Select an available exercise.
@@ -74,7 +75,6 @@ The planned MVP supports five exercises:
 3. Dumbbell biceps curls
 4. Shoulder presses
 5. Lunges
-
 Each exercise uses exercise-specific movement logic.
 
 ### 6.5 Repetition and Set Counting
@@ -91,7 +91,6 @@ Each exercise uses exercise-specific movement logic.
 - **Biceps curls:** Elbow movement and torso swing.
 - **Shoulder presses:** Elbow extension and a basic back-arch indicator.
 - **Lunges:** Front-knee angle, torso position, and a basic balance indicator.
-
 These are approximate, pose-based indicators rather than clinically validated assessments.
 
 ### 6.7 AI-Generated Coaching
@@ -143,19 +142,14 @@ The LLM does not independently validate exercise form; its feedback depends on t
 
 | Component | Technology | Purpose |
 |---|---|---|
-| Main language | Python | Application and exercise logic |
-| User interface | Streamlit | Workout dashboard and controls |
-| Camera streaming | Streamlit-WebRTC | Live webcam input |
-| Pose estimation | MediaPipe Tasks | Body-landmark detection |
-| Image processing | OpenCV | Frame processing and skeleton overlays |
-| Numerical processing | NumPy | Landmark and angle calculations |
-| AI coaching | Groq API and Llama 3.3 70B, or the selected supported LLM | Coaching-message generation |
-| Voice generation | gTTS | Text-to-speech |
-| Authentication | Supabase Auth or another verified authentication provider | Sign-up, sign-in, and 2FA |
-| Persistent database | Supabase PostgreSQL or another suitable persistent database | User-linked workout history |
-| Video processing | PyAV | Video-frame handling |
-| Styling | CSS and HTML | Application styling |
-
+| Language & Processing | Python, NumPy | Application logic and numerical calculations |
+| UI & Streaming | Streamlit, Streamlit-WebRTC | Dashboard and live webcam feed |
+| Computer Vision | MediaPipe Tasks, OpenCV | Pose estimation, landmark tracking, and frame processing |
+| AI Coaching | Groq API, Llama 3.3 70B | Context-aware coaching messages |
+| Voice Output | gTTS | Text-to-speech coaching |
+| Database | SQLite | User profiles and workout history |
+| Video Handling | PyAV | Video-frame processing |
+| Styling | HTML, CSS | UI styling and landing page |
 The final authentication and database implementation must be tested together with the selected application architecture.
 
 ## 10. Data Model
@@ -165,7 +159,6 @@ The final authentication and database implementation must be tested together wit
 - `user_id`: Unique authenticated user identifier.
 - `email`: Account email, where applicable.
 - `created_at`: Account creation timestamp.
-
 Authentication credentials and 2FA secrets should be managed by the authentication provider, not stored as ordinary application profile fields.
 
 ### Workout Record
@@ -218,160 +211,69 @@ Database access policies must prevent users from viewing or modifying other user
 
 ### Proposed Build Timeline: 19–22 October
 
-**19 October — Kickoff**
-- Create the project workspace after the official kickoff.
-- Finalize the architecture and assign team responsibilities.
-- Set up authentication, database, and application dependencies.
-- Establish the initial working application.
+### Build Plan: 19–22 October
 
-**20 October — Core Integration**
-- Implement the authenticated user journey.
-- Integrate pose detection and exercise tracking.
-- Connect the LLM coaching and voice services.
-- Save workout records to the persistent database.
-
-**21 October — Testing and Refinement**
-- Test registration, sign-in, 2FA, and user-specific data access.
-- Compare repetition counts with manual counts.
-- Test coaching and speech integration.
-- Improve the interface and handle common errors.
-
-**22 October — Deployment and Verification**
-- Deploy the application to the selected environment.
-- Verify authentication, secrets, webcam access, and database persistence.
-- Test the complete user journey.
-- Resolve critical issues before submission.
-
-The authentication, database, and webcam integrations should be tested early because deployment constraints can affect their behavior.
-
-## 12. Team Readiness and Reusable DevMarketplace Code Gigs
-
-### 12.1 Reusing Existing Components
-
-The team will prioritize established libraries and reusable components instead of building every technical capability from scratch.
-
-Potential resources include:
-
-- MediaPipe for pose estimation.
-- Streamlit-WebRTC for webcam streaming.
-- OpenCV and NumPy for video and numerical processing.
-- Streamlit components for the application interface.
-- An established authentication provider supporting the required 2FA flow.
-- Existing DevMarketplace Code Gigs, where a suitable, documented, compatible component is available.
-
-The team will review component documentation, dependencies, security implications, and licenses before integrating any third-party code.
-
-### 12.2 Planned DevMarketplace Code Gigs
-
-The team plans to extract and publish at least two reusable components developed during the hackathon.
-
-**Code Gig 1: Secure Authentication and User Access Module**
-
-**Purpose:** A reusable authentication integration for applications requiring account registration, sign-in, 2FA, and authenticated sessions.
-
-**Planned functionality:**
-- Sign-up and sign-in integration.
-- 2FA setup and verification through the selected provider.
-- Session management and sign-out.
-- Authenticated user identification.
-- Documentation for configuration and integration.
-
-**Code Gig 2: AI Workout Coaching Service**
-
-**Purpose:** A reusable service that transforms structured exercise events into concise AI-generated coaching messages and connects those messages to speech output.
-
-**Planned functionality:**
-- Accept structured exercise events and detected indicators.
-- Construct controlled prompts for the LLM.
-- Call the configured AI model.
-- Return concise coaching messages.
-- Integrate text-to-speech output.
-- Handle API errors and provide safe fallback messages.
-
-These are proposed deliverables to be implemented and extracted from the team's own hackathon work. They are not claims that these exact Code Gigs already exist on DevMarketplace.
-
-### 12.3 Code Gig Publication Requirements
-
-For each Code Gig, the team will provide:
-
-- A clear, descriptive title.
-- A short explanation of the problem it solves.
-- Setup instructions and dependencies.
-- Usage examples and integration instructions.
-- Relevant license information.
-- Team-member contributor credits.
-
-The team will publish the components during development rather than waiting until the end of the hackathon.
-
-### 12.4 Team Responsibilities
-
-- **AI/Computer Vision:** Pose detection, movement logic, and repetition-count validation.
-- **Backend/Integration:** Authentication, database operations, and API integration.
-- **Frontend/UI:** Registration, sign-in, dashboard, and workout interface.
-- **Testing/Deployment:** End-to-end validation and deployment reliability.
-- **Reusable Components/Documentation:** Extraction, packaging, and publication of Code Gigs.
-
-Responsibilities will be assigned according to the actual team members' skills and availability.
-
-## 13. Impact and Evaluation
-
-| Metric | Evaluation Method |
+| Date | Key Milestones |
 |---|---|
-| Repetition-count agreement | Compare automated counts with manual counts. |
-| Form-indicator reliability | Compare detector flags with human-labelled examples. |
-| Coaching latency | Measure time from a detected event to spoken feedback. |
-| Authentication reliability | Test sign-up, sign-in, 2FA, and session handling. |
-| Data privacy | Verify users cannot access other users' workout records. |
-| History reliability | Confirm workout data persists across application restarts. |
-| Session completion | Measure successful end-to-end workout sessions. |
-| User experience | Collect feedback on clarity and usefulness. |
+| **19 Oct** | Finalize architecture, team roles, and project setup. |
+| **20 Oct** | Integrate authentication, pose detection, AI coaching, and database. |
+| **21 Oct** | Test rep-count accuracy, user access, voice feedback, and fix bugs. |
+| **22 Oct** | Deploy, verify the complete workflow, and prepare the final demo. |
 
-Performance results will be reported only after testing.
+## 12. Team Readiness & DevMarketplace Reuse
 
-## 14. Risks and Limitations
+The team will divide work across frontend, AI/computer vision, backend/database, and testing/deployment according to members' skills.
 
-- Camera angle, lighting, and occlusion can affect pose estimation.
-- Fixed movement thresholds may not work equally well for every user.
-- LLM-generated advice may be inaccurate.
-- External AI and speech services may require internet access.
-- Authentication and 2FA must be configured correctly to protect accounts.
-- Database access policies must enforce user-level data isolation.
-- Hosted environments may require deployment-specific configuration.
-- The system is not a medical device and cannot guarantee injury prevention.
+**Existing Components to Evaluate for Reuse:**
+
+- Streamlit and Streamlit-WebRTC for the interface and webcam streaming.
+- MediaPipe and OpenCV for pose estimation and frame processing.
+- A suitable authentication service and persistent database.
+- Compatible DevMarketplace Code Gigs for authentication, UI, database integration, or API utilities, subject to verification, licensing, and integration testing.
+
+**Planned Team-Created Code Gigs:**
+
+1. **Reusable Authentication Module:** Secure authentication integration and session handling; include 2FA if implemented and tested.
+2. **AI Workout Coaching Service:** Converts exercise events into LLM-generated feedback and voice output.
+
+The team will publish at least two reusable Code Gigs created during the hackathon, with setup instructions, usage examples, contributor credits, and appropriate licensing.
+
+## 13. Impact & Evaluation
+
+We will evaluate the MVP through:
+
+- Repetition-counting accuracy against manually counted repetitions.
+- Correct detection of selected, predefined form errors.
+- Feedback latency during live exercise.
+- Successful account creation, sign-in, 2FA, and workout-history persistence.
+- End-to-end tests across supported exercises and webcam conditions.
+
+## 14. Risks & Limitations
+
+- Lighting, camera angle, clothing, and occlusion can affect pose detection.
+- Rule-based form checks may not work reliably for every body type or exercise variation.
+- LLM responses can be inaccurate; coaching will be constrained to detected events.
+- Webcam processing and external API availability may affect latency.
+- Authentication, database persistence, and deployment must be tested before claiming full support.
 
 ## 15. Success Criteria
 
-The MVP will be considered ready for submission when:
-
-- Users can register, sign in, and complete 2FA.
-- Authenticated users can access their own workout dashboard.
-- Pose landmarks are displayed from a live camera feed.
-- Repetitions and sets update for supported exercises.
-- Supported events can trigger real AI-generated coaching.
-- Spoken feedback works under the configured environment.
-- Workout statistics persist and can be retrieved after signing in again.
-- Users cannot access other users' private workout records.
-- The application has a consistent, functional interface.
-- At least two reusable Code Gigs have been published with documentation and contributor credits.
-- The public repository includes setup instructions and an AI/reuse disclosure.
+- Users can securely register and sign in, with 2FA where implemented.
+- Supported exercises run with live pose tracking and repetition counting.
+- Basic form feedback and AI voice coaching work end to end.
+- Workout history persists and can be retrieved.
+- The deployed MVP, public repository, documentation, and two team-created Code Gigs are available for evaluation.
 
 ## 16. Project Differentiation
 
-AI Real-Time Gym Coach combines live body tracking, exercise-specific repetition logic, selected form indicators, AI-generated coaching, spoken feedback, account management, and workout history.
-
-Unlike a static workout video, the system responds to the user's current camera feed and supported workout events.
-
-The project's value lies in integrating these capabilities into an accessible fitness experience and validating their reliability. It does not claim that the individual technologies are unique in the fitness market.
+Unlike prerecorded workout videos, the application observes the user's live movement, tracks repetitions, identifies predefined form issues, and responds with contextual AI coaching. Its focus is accessible, interactive workout guidance without requiring a personal trainer.
 
 ## 17. Future Scope
 
-- Improve exercise-detector accuracy through labelled testing.
-- Add confidence-aware pose and form assessment.
-- Introduce workout summaries and progress visualizations.
-- Explore multilingual coaching.
-- Add more exercises after validating the current detectors.
-- Improve personalization based on workout history.
-- Expand the authentication and security features as the product grows.
+- More exercises and personalized workout plans.
+- Improved movement analysis and progress visualizations.
+- Multilingual coaching and accessibility improvements.
+- Mobile-friendly experience and integration with wearable devices.
 
 ## 18. Final Pitch
 
@@ -399,7 +301,6 @@ The final public repository will document:
 - Original code and reusable components created by the team during the hackathon.
 
 Only components actually used in the submitted project will be listed as integrated dependencies, and only work genuinely created by the team during the event will be presented as original Code Gigs.
-
----
+----
 
 **Specification status:** Proposed hackathon MVP. Authentication, 2FA, persistent storage, deployment, and Code Gig publication must be implemented and tested before being claimed as completed.
