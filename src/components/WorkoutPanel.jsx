@@ -59,6 +59,10 @@ export default function WorkoutPanel({
   const canvasRef = useRef(null);
   const runningRef = useRef(false);
   const lastLiftRef = useRef(0);
+  const onSessionUpdateRef = useRef(onSessionUpdate);
+
+  // Keep the latest callback without restarting the camera/model effect on every parent render.
+  useEffect(() => { onSessionUpdateRef.current = onSessionUpdate; }, [onSessionUpdate]);
 
   const [modelLoading, setModelLoading] = useState(false);
   const [cameraError, setCameraError] = useState(null);
@@ -102,7 +106,7 @@ export default function WorkoutPanel({
 
     async function setup() {
       try {
-        const [{ PoseLandmarker, FilesetResolver, DrawingUtils }, mediaStream] =
+        const [{ PoseLandmarker, FilesetResolver }, mediaStream] =
           await Promise.all([
             import('@mediapipe/tasks-vision'),
             navigator.mediaDevices.getUserMedia({
@@ -185,9 +189,9 @@ export default function WorkoutPanel({
                 });
 
                 const now = performance.now();
-                if (onSessionUpdate && now - lastLiftRef.current > 250) {
+                if (onSessionUpdateRef.current && now - lastLiftRef.current > 250) {
                   lastLiftRef.current = now;
-                  onSessionUpdate({
+                  onSessionUpdateRef.current({
                     reps: out.repCount,
                     currentSetReps: out.currentSetReps,
                     set: out.setsCompleted,
@@ -196,7 +200,7 @@ export default function WorkoutPanel({
                   });
                 }
               }
-              drawPose(c, results.landmarks[0], poseRef.current, DrawingUtils);
+              drawPose(c, results.landmarks[0]);
             }
           }
 
@@ -223,7 +227,7 @@ export default function WorkoutPanel({
       if (raf) cancelAnimationFrame(raf);
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
-  }, [active, exercise, targetReps, onSessionUpdate]);
+  }, [active, exercise, targetReps]);
 
   const renderExerciseMetrics = () => {
     const spec = FORM_RULES[exercise.id];
