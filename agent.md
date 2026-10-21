@@ -132,3 +132,7 @@ The agent must produce two modular, reusable code modules:
 1. **`reusable-auth-module`**: Standalone React hook/component for user sign-in and session state management.
 2. **`ai-workout-coaching-service`**: Modular JS library connecting MediaPipe Pose events to Groq LLM API and Web Speech TTS.
 
+## 5. Runtime Stability & Performance Directives (Active Execution Notes)
+- **Single Model Initialization:** Initialize the MediaPipe `PoseLandmarker` strictly once using a persistent reference (`poseLandmarkerRef`) to prevent continuous re-loading loops or "Loading MediaPipe Pipeline" UI flickers on frames/movement.
+- **Canvas-Video Synchronization:** Dynamically align HTML5 canvas width and height with the video element's natural dimensions for precise skeleton joint overlays.
+- **State Persistence:** Ensure exercise detector state machines (`stage: 'up'` / `'down'`) persist correctly across frames so that rep counts increment accurately.
