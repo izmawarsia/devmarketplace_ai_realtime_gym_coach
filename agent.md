@@ -4,82 +4,93 @@
 You are tasked with building and executing the **AI Real-Time Gym Coach** application within the DevMarketplace platform using a modern web-native stack. 
 To ensure full compatibility with DevMarketplace's supported runtimes (Vite / React):
 - **Frontend Stack**: Vite + React + Tailwind CSS (or custom CSS matching the dark luxury theme).
-- **Computer Vision**: `@mediapipe/tasks-vision` (JavaScript SDK) running client-side in the browser via WebAssembly/WebGL.
-- **AI Coaching Engine**: Groq API (Llama 3.3 70B) for generating concise coaching cues.
-- **Voice Output**: Browser-native `SpeechSynthesis` API (Web Speech API).
-- **Data Persistence**: DevMarketplace Built-in Database or LocalStorage for user profiles and session history.
 
 
 ## Project Folder Structure (Root)
 Ensure the repository follows this layout:
 ```text
-ai-realtime-gym-coach/
-├── package.json          # NPM dependencies (React, MediaPipe, Vite)
-├── vite.config.js       # Vite configuration
-├── index.html           # HTML Entry point
+apna-ai-coach/
+├── public/
+│   └── favicon.ico
 ├── src/
-│   ├── assets/          # Fonts (AdobeClean.otf) & styles
-│   ├── components/      # UI Components (Sidebar, Dashboard, Metrics, History)
-│   ├── core/            # BaseExercise.js, stateManager.js
-│   ├── detectors/       # Exercise logic files (Squats, Push-ups, Biceps Curls, etc.)
-│   ├── services/        # Database, Auth, and API integrations
-│   ├── App.jsx          # Main React App layout
-│   └── main.jsx         # React Entry Point
-
+│   ├── assets/
+│   │   └── logo.svg
+│   ├── components/
+│   │   ├── layout/
+│   │   │   └── Header.jsx              # Navigation header with "Workout" tab & dynamic user initials badge
+│   │   ├── standby/
+│   │   │   ├── WorkoutPlanPanel.jsx    # Left side exercise selector, target steppers & "Start Workout" button
+│   │   │   └── VideoStandbyPanel.jsx   # Right side standby video container & instructions ("👉 Set your workout plan")
+│   │   ├── active/
+│   │   │   ├── ActiveWorkoutPanel.jsx  # Morphing left panel ("End Workout" button & routine summary)
+│   │   │   ├── VideoActivePanel.jsx    # Active camera video stream container
+│   │   │   └── LiveTelemetryPanel.jsx  # Real-time metrics display (initialized safely at 0° / N/A)
+│   │   ├── history/
+│   │   │   └── HistoryTable.jsx        # "Recent Workouts" table (Visible in Standby, hidden in Active state)
+│   │   └── auth/
+│   │       └── Login.jsx               # Username session login gate
+│   ├── data/
+│   │   ├── exercises.js                # List of exercises & target parameter configs
+│   │   └── history.js                  # Initial history log mocks
+│   ├── context/
+│   │   └── WorkoutContext.jsx          # Global context managing workout_started, selections & user state
+│   ├── styles/
+│   │   └── scrollbars.css              # Custom amber thin scrollbars & utility classes
+│   ├── App.jsx                         # Root orchestrator (conditional rendering & layout views)
+│   ├── index.css                       # Tailwind directives & global resets
+│   └── main.jsx                        # React DOM root entry point
+├── .env                                # Supabase URL & Anon Key credentials
+├── index.html                          # Root HTML document
+├── package.json                        # Dependencies & scripts
+├── postcss.config.js                   # PostCSS configuration
+├── tailwind.config.js                  # Tailwind theme customizations
+└── vite.config.js                      # Vite build configurations
 
 ## Phase Breakdown & Execution Roadmap
+## PHASE 1 : 
+# Apna AI Coach - Frontend UI & State Implementation Specs
+## 1. Top Header Navigation
+- **Logo / Title:** Left side par "APNA AI COACH" with brand icon.
+- **Tabs:** Navigation tab mein sirf **"Workout"** hona chahiye (Purana "Home" tab mukammal taur par remove kar diya jaye).
+- **User Profile Badge:** Far-right par logged-in user ke initials (e.g., "IZ") ek circular badge mein hon, sath mein glowing amber active status dot ho.
 
-### Phase 1: Project Setup, Boilerplate & Sidebar UI
+## 2. Left Panel / Sidebar Layout & States
+The left panel must dynamically switch between two states based on the global state `workout_started`:
 
-* **Goal**: Initialize Vite + React project, install mandatory dependencies, configure styles, and build the interactive sidebar/dashboard layout.
-* **Tasks**:
-1. Create `package.json` with required dependencies (`@mediapipe/tasks-vision`, `react`, `react-dom`, `lucide-react`, `vite`).
-2. Implement global styling (`style.css`) supporting `#0A0D14` background and `AdobeClean` typography.
-3. Build `Sidebar.jsx` component for managing exercise options, target sets, reps configuration, and session start/end states.
-4. Setup core state management (`stateManager.js`) to track reps, current set progress, and exercise metrics.
+### A. State A: Standby Mode (`workout_started === false`)
+- **Header:** "WORKOUT PLAN" heading with a custom thin amber scrollbar (`overflow-y-auto`).
+- **Exercise Selector Cards:** List of exercises (`Squats`, `Push-ups`, `Biceps Curls (Dumbbell)`, `Shoulder Press`, `Lunges`). Selected exercise card must have a distinct amber border highlight and dot indicator.
+- **Target Controls:** 
+  - **Sets Target:** Number stepper with `-` and `+` buttons (default: 3).
+  - **Reps / Set:** Number stepper with `-` and `+` buttons (default: 10).
+- **Action Button:** A prominent amber/orange button labeled **"Start Workout"**. Clicking this sets `workout_started = true`.
 
+### B. State B: Active Session Mode (`workout_started === true`)
+When active, morph the left panel content completely:
+- **Active Routine Box:** Dark card showing active exercise name and target summary (e.g., `Squats -- 3 Sets Target · 10 Reps / Set`).
+- **End Workout Button:** A styled red button labeled **"END WORKOUT"**. Clicking this sets `workout_started = false` and returns to Standby mode.
+- **Progress Tracking Section:** 
+  - Total Reps (e.g., `0`)
+  - Current Set Reps (e.g., `0 / 10`)
+  - Sets Completed (e.g., `0 / 3`)
+- **Dynamic Exercise Metrics (Conditional based on selected exercise):**
+  - *If Squats:* Knee Angle (`0°`), Back Angle (`0°`), Depth Status (`N/A`)
+  - *If Push-ups:* Elbow Angle (`0°`), Body Alignment (`N/A`), Hip Position (`N/A`)
+  - *If Biceps Curls:* Elbow Angle (`0°`), Shoulder Stability (`N/A`), Swing Detection (`N/A`)
+  - *If Shoulder Press:* Elbow Angle (`0°`), Arm Extension (`N/A`), Back Arch (`N/A`)
+  - *If Lunges:* Front Knee Angle (`0°`), Torso Angle (`0°`), Balance Status (`N/A`)
 
+## 3. Right Panel & Video Section
+- **Header:** Title **"AI Real-time GYM Coach"** with subtitle *"Real-time pose detection with proactive AI voice coaching"*.
+- **State A (Standby Mode - `workout_started === false`):**
+  - Render a professional dashed border box with a centered activity icon and prompt: **"👉 Set your workout plan"** followed by *"Choose your exercise, sets and reps in the left panel, then click Start Workout to activate camera and AI pose tracking."*
+- **State B (Active Session Mode - `workout_started === true`):**
+  - Render the active video stream container (Webcam Feed / MediaPipe Live) with a "MediaPipe Live" badge, a "START" button, and camera device selector dropdown.
 
-### Phase 2: Client-Side Pose Detection & Angle Engine (`BaseExercise.js`)
-
-* **Goal**: Implement MediaPipe Pose Landmarker in JavaScript and establish deterministic angle calculations.
-* **Tasks**:
-1. Initialize `PoseLandmarker` from `@mediapipe/tasks-vision` using WebGL delegate.
-2. Access browser webcam using `navigator.mediaDevices.getUserMedia()` and stream to an HTML5 `<video>` / `<canvas>` overlay.
-3. Implement `BaseExercise.js` containing the 2D joint-angle calculation method:
-
-$$\theta = \arccos\left(\max\left(-1.0, \min\left(1.0, \frac{\mathbf{a} \cdot \mathbf{c}}{\vert{}\mathbf{a}\vert{}\vert{}\mathbf{c}\vert{}}\right)\right)\right) \times \frac{180}{\pi}$$
-
-
-
-### Phase 3: Exercise Detectors & Real-Time Metrics
-
-* **Goal**: Implement deterministic state machines and angle thresholds for the 5 target exercises.
-* **Tasks**:
-1. **Squats**: Track knee and back angles; monitor depth status.
-2. **Push-ups**: Track elbow angles and body/hip alignment.
-3. **Biceps Curls**: Track elbow movement and torso swing.
-4. **Shoulder Press**: Track elbow extension and back arch.
-5. **Lunges**: Track front knee angle and balance status.
-6. Update sidebar progress metrics dynamically in real time as the user performs reps.
-
-
-
-### Phase 4: Groq LLM Coaching, Speech Synthesis & Persistence
-
-* **Goal**: Integrate context-aware AI feedback, voice output, and session history logging.
-* **Tasks**:
-1. Connect Groq API (`Llama 3.3 70B`) to trigger concise cues on supported workout events.
-2. Implement text-to-speech using `window.speechSynthesis`.
-3. Configure the DevMarketplace Built-in Database to save workout sessions (`user_id`, `exercise_name`, `reps`, `sets`, `time`, `timestamp`).
-4. Render persistent workout history in a clean data table component.
+## 4. Bottom History Table (CRITICAL RULE)
+- **Standby Mode (`workout_started === false`):** The **"RECENT WORKOUT HISTORY"** table must be fully visible at the bottom of the page, showing past exercise logs (Exercise, Reps, Sets, Time, Logged At).
+- **Active Session Mode (`workout_started === true`):** The **"RECENT WORKOUT HISTORY" table must be completely hidden and removed from the DOM** to prevent UI clutter and layout shifting during active workouts.
 
 
 
-## Code Gig Deliverables (DevMarketplace Requirement)
-
-The agent must produce two modular, reusable code modules:
-
-1. **`reusable-auth-module`**: Standalone React hook/component for user sign-in and session state management.
-2. **`ai-workout-coaching-service`**: Modular JS library connecting MediaPipe Pose events to Groq LLM API and Web Speech TTS.
 
