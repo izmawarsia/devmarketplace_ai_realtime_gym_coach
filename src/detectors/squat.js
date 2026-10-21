@@ -35,7 +35,7 @@ export class SquatDetector extends BaseExercise {
 
     let depth = 'STANDING';
     if (kneeAngle < 90) depth = 'GOOD DEPTH';
-    else if (kneeAngle < 160) depth = 'shallow';
+    else if (kneeAngle < 160) depth = 'TOO HIGH';
 
     return {
       metrics: {

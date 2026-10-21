@@ -91,9 +91,11 @@ export default function WorkoutPanel({
 
     let cancelled = false;
     let stream = null;
-    let pose = null;
     let raf = null;
-    const detector = createDetector(exercise, targetReps);
+
+    // Use refs to persist PoseLandmarker and detector instances
+    const poseRef = { current: null };
+    const detectorRef = { current: null };
 
     setModelLoading(true);
     setCameraError(null);
@@ -128,36 +130,49 @@ export default function WorkoutPanel({
           'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
         );
 
-        pose = await PoseLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath:
-              'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
-            delegate: 'GPU',
-          },
-          runningMode: 'VIDEO',
-          numPoses: 1,
-        });
+        // Initialize PoseLandmarker only once
+        if (!poseRef.current) {
+          poseRef.current = await PoseLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath:
+                'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
+              delegate: 'GPU',
+            },
+            runningMode: 'VIDEO',
+            numPoses: 1,
+          });
+        }
+
+        // Initialize detector only once per exercise and targetReps
+        if (!detectorRef.current || detectorRef.current.exerciseId !== exercise.id || detectorRef.current.targetReps !== targetReps) {
+          detectorRef.current = createDetector(exercise, targetReps);
+          detectorRef.current.exerciseId = exercise.id;
+          detectorRef.current.targetReps = targetReps;
+        }
 
         if (cancelled) return;
         setModelLoading(false);
 
         runningRef.current = true;
 
-        const loop = () => {
+        const loop = async () => {
           if (!runningRef.current) return;
           const v = videoRef.current;
           const c = canvasRef.current;
 
           if (v && c && v.readyState >= 2) {
-            if (c.width !== v.videoWidth) {
+            if (c.width !== v.videoWidth || c.height !== v.videoHeight) {
               c.width = v.videoWidth;
               c.height = v.videoHeight;
             }
 
-            const results = pose.detectForVideo(v, performance.now());
+            const results = await poseRef.current.detectForVideo(v, performance.now());
+
+            const ctx = c.getContext('2d');
+            ctx.clearRect(0, 0, c.width, c.height);
 
             if (results.landmarks?.[0]) {
-              const out = detector.process(results.landmarks[0]);
+              const out = detectorRef.current.process(results.landmarks[0]);
               if (out.metrics) {
                 setLiveMetrics(out.metrics);
                 const { issues, metricStatus: status } = analyzeForm(exercise.id, out.metrics);
@@ -181,10 +196,7 @@ export default function WorkoutPanel({
                   });
                 }
               }
-              drawPose(c, results.landmarks, PoseLandmarker, DrawingUtils);
-            } else {
-              const ctx = c.getContext('2d');
-              ctx?.clearRect(0, 0, c.width, c.height);
+              drawPose(c, results.landmarks, poseRef.current, DrawingUtils);
             }
           }
 
