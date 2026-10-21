@@ -18,19 +18,19 @@ export default function App() {
   });
   const [tab, setTab] = useState('home');
 
-  // Workout plan defaults matching Streamlit config
+  // Workout plan defaults
   const [exercise, setExercise] = useState(EXERCISES[0]);
   const [targetSets, setTargetSets] = useState(3);
   const [targetReps, setTargetReps] = useState(10);
 
-  // Active session state
+  // Active session state (updated by WorkoutPanel every frame)
   const [active, setActive] = useState(false);
   const [session, setSession] = useState(null);
 
   // History state
   const [history, setHistory] = useState([]);
   useEffect(() => {
-    if (user) fetchHistory(user.name).then(setHistory);
+    if (user) setHistory(fetchHistory(user.name));
   }, [user]);
 
   const login = (u) => {
@@ -41,22 +41,23 @@ export default function App() {
   if (!user) return <Login onLogin={login} />;
 
   const startWorkout = () => {
-    // Initializing static session defaults (reps: 0, set: 1)
-    setSession({ 
-      reps: 0, 
+    setSession({
+      reps: 0,
       currentSetReps: 0,
-      set: 0, 
-      targetReps, 
-      targetSets, 
-      elapsed: 0 
+      set: 0,
+      targetReps,
+      targetSets,
+      elapsed: 0,
+      metrics: {},
+      formIssues: [],
     });
     setActive(true);
   };
 
-  const endWorkout = async () => {
+  const endWorkout = () => {
     setActive(false);
     if (session) {
-      await saveWorkout(user.name, {
+      saveWorkout(user.name, {
         exercise: exercise.name,
         sets: session.targetSets,
         reps: session.targetReps,
@@ -64,11 +65,15 @@ export default function App() {
         accuracy: 100,
         calories: 0,
         durationMin: 1,
-        formIssues: [],
+        formIssues: session.formIssues || [],
       });
-      fetchHistory(user.name).then(setHistory);
+      setHistory(fetchHistory(user.name));
     }
     setSession(null);
+  };
+
+  const updateSession = (next) => {
+    setSession((prev) => (prev ? { ...prev, ...next } : next));
   };
 
   return (
@@ -90,6 +95,7 @@ export default function App() {
             setTargetReps={setTargetReps}
             onStartWorkout={startWorkout}
             onEndWorkout={endWorkout}
+            onSessionUpdate={updateSession}
             history={history}
             onViewHistoryAll={() => setTab('history')}
           />

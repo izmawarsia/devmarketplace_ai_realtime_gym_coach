@@ -1,90 +1,245 @@
-import { Video, Target, Repeat, Layers, Play, Square, Dumbbell } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Play, Square, Dumbbell, Video, AlertTriangle, Activity } from 'lucide-react';
 import HistoryTable from './HistoryTable';
+import { EXERCISES } from '../data/exercises';
+import { createDetector } from '../detectors/index';
+import { drawPose } from '../core/drawing';
+import { analyzeForm, FORM_RULES, SEVERITY } from '../analysis/formRules';
 
-const EXERCISE_OPTIONS = [
-  { id: 'Squats', name: 'Squats', subtitle: 'Quads · Glutes' },
-  { id: 'Push-ups', name: 'Push-ups', subtitle: 'Chest · Triceps' },
-  { id: 'Biceps Curls (Dumbbell)', name: 'Biceps Curls (Dumbbell)', subtitle: 'Biceps · Forearms' },
-  { id: 'Shoulder Press', name: 'Shoulder Press', subtitle: 'Delts · Triceps' },
-  { id: 'Lunges', name: 'Lunges', subtitle: 'Quads · Glutes' }
-];
-
-function MetricCard({ label, value }) {
+function MetricCard({ label, value, status }) {
+  const bad = status === SEVERITY.BAD;
+  const warn = status === SEVERITY.WARN;
   return (
-    <div className="flex items-center justify-between rounded-xl bg-[#121620] px-4 py-3 border border-white/5">
+    <div
+      className={`flex items-center justify-between rounded-xl px-4 py-3 border transition-colors ${
+        bad
+          ? 'bg-red-500/10 border-red-500/40'
+          : warn
+          ? 'bg-amber-500/10 border-amber-500/40'
+          : 'bg-[#121620] border-white/5'
+      }`}
+    >
       <span className="text-xs font-medium text-gray-400">{label}</span>
-      <span className="text-base font-bold text-white tabular-nums">{value}</span>
+      <span
+        className={`text-base font-bold tabular-nums ${
+          bad ? 'text-red-400' : warn ? 'text-amber-400' : 'text-white'
+        }`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
 
-export default function WorkoutPanel({ 
-  active, 
-  session, 
-  exercise, 
-  setExercise, 
-  targetSets = 3, 
-  setTargetSets, 
-  targetReps = 10, 
-  setTargetReps, 
-  onStartWorkout, 
-  onEndWorkout,
-  history = [],
-  onViewHistoryAll
-}) {
-  // Render Dynamic Metrics based on selected exercise
-  const renderExerciseMetrics = () => {
-    const exName = exercise?.name || 'Squats';
+function formatMetric(exerciseId, key, metrics) {
+  const spec = FORM_RULES[exerciseId];
+  const metric = spec?.metrics.find((m) => m.key === key);
+  const raw = metrics?.[key];
+  if (raw == null) return metric?.unit === '°' ? '0°' : 'N/A';
+  if (typeof raw === 'number') return `${raw}${metric?.unit ?? ''}`;
+  return String(raw);
+}
 
-    if (exName.includes('Squats')) {
-      return (
-        <div className="space-y-2 mt-4">
-          <span className="text-[11px] font-bold tracking-wider text-amber-400 uppercase">SQUAT METRICS</span>
-          <MetricCard label="Knee Angle" value="0°" />
-          <MetricCard label="Back Angle" value="0°" />
-          <MetricCard label="Depth Status" value="N/A" />
-        </div>
-      );
-    } else if (exName.includes('Push-ups')) {
-      return (
-        <div className="space-y-2 mt-4">
-          <span className="text-[11px] font-bold tracking-wider text-amber-400 uppercase">PUSH-UP METRICS</span>
-          <MetricCard label="Elbow Angle" value="0°" />
-          <MetricCard label="Body Alignment" value="N/A" />
-          <MetricCard label="Hip Position" value="N/A" />
-        </div>
-      );
-    } else if (exName.includes('Biceps Curls')) {
-      return (
-        <div className="space-y-2 mt-4">
-          <span className="text-[11px] font-bold tracking-wider text-amber-400 uppercase">CURL METRICS</span>
-          <MetricCard label="Elbow Angle" value="0°" />
-          <MetricCard label="Shoulder Stability" value="N/A" />
-          <MetricCard label="Swing Detection" value="N/A" />
-        </div>
-      );
-    } else if (exName.includes('Shoulder Press')) {
-      return (
-        <div className="space-y-2 mt-4">
-          <span className="text-[11px] font-bold tracking-wider text-amber-400 uppercase">SHOULDER PRESS METRICS</span>
-          <MetricCard label="Elbow Angle" value="0°" />
-          <MetricCard label="Arm Extension" value="N/A" />
-          <MetricCard label="Back Arch" value="N/A" />
-        </div>
-      );
-    } else if (exName.includes('Lunges')) {
-      return (
-        <div className="space-y-2 mt-4">
-          <span className="text-[11px] font-bold tracking-wider text-amber-400 uppercase">LUNGE METRICS</span>
-          <MetricCard label="Front Knee Angle" value="0°" />
-          <MetricCard label="Torso Angle" value="0°" />
-          <MetricCard label="Balance Status" value="N/A" />
-        </div>
-      );
+export default function WorkoutPanel({
+  active,
+  session,
+  exercise,
+  setExercise,
+  targetSets = 3,
+  setTargetSets,
+  targetReps = 10,
+  setTargetReps,
+  onStartWorkout,
+  onEndWorkout,
+  onSessionUpdate,
+  history = [],
+  onViewHistoryAll,
+}) {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const runningRef = useRef(false);
+  const lastLiftRef = useRef(0);
+
+  const [modelLoading, setModelLoading] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
+  const [liveMetrics, setLiveMetrics] = useState({});
+  const [metricStatus, setMetricStatus] = useState({});
+  const [liveIssues, setLiveIssues] = useState([]);
+  const [progress, setProgress] = useState({
+    reps: 0,
+    currentSetReps: 0,
+    setsCompleted: 0,
+  });
+
+  // Reset live telemetry when a new session starts.
+  useEffect(() => {
+    if (active) {
+      setLiveMetrics({});
+      setMetricStatus({});
+      setLiveIssues([]);
+      setProgress({ reps: 0, currentSetReps: 0, setsCompleted: 0 });
+      setCameraError(null);
     }
+  }, [active]);
+
+  // Browser-side MediaPipe + WebRTC pipeline.
+  useEffect(() => {
+    if (!active) {
+      runningRef.current = false;
+      return;
+    }
+
+    let cancelled = false;
+    let stream = null;
+    let pose = null;
+    let raf = null;
+    const detector = createDetector(exercise, targetReps);
+
+    setModelLoading(true);
+    setCameraError(null);
+
+    async function setup() {
+      try {
+        const [{ PoseLandmarker, FilesetResolver, DrawingUtils }, mediaStream] =
+          await Promise.all([
+            import('@mediapipe/tasks-vision'),
+            navigator.mediaDevices.getUserMedia({
+              video: {
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                facingMode: 'user',
+              },
+            }),
+          ]);
+
+        if (cancelled) {
+          mediaStream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        stream = mediaStream;
+        const video = videoRef.current;
+        if (video) {
+          video.srcObject = stream;
+          await video.play();
+        }
+
+        const vision = await FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
+        );
+
+        pose = await PoseLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          numPoses: 1,
+        });
+
+        if (cancelled) return;
+        setModelLoading(false);
+
+        runningRef.current = true;
+
+        const loop = () => {
+          if (!runningRef.current) return;
+          const v = videoRef.current;
+          const c = canvasRef.current;
+
+          if (v && c && v.readyState >= 2) {
+            if (c.width !== v.videoWidth) {
+              c.width = v.videoWidth;
+              c.height = v.videoHeight;
+            }
+
+            const results = pose.detectForVideo(v, performance.now());
+
+            if (results.landmarks?.[0]) {
+              const out = detector.process(results.landmarks[0]);
+              if (out.metrics) {
+                setLiveMetrics(out.metrics);
+                const { issues, metricStatus: status } = analyzeForm(exercise.id, out.metrics);
+                setLiveIssues(issues);
+                setMetricStatus(status);
+                setProgress({
+                  reps: out.repCount,
+                  currentSetReps: out.currentSetReps,
+                  setsCompleted: out.setsCompleted,
+                });
+
+                const now = performance.now();
+                if (onSessionUpdate && now - lastLiftRef.current > 250) {
+                  lastLiftRef.current = now;
+                  onSessionUpdate({
+                    reps: out.repCount,
+                    currentSetReps: out.currentSetReps,
+                    set: out.setsCompleted,
+                    metrics: out.metrics,
+                    formIssues: issues,
+                  });
+                }
+              }
+              drawPose(c, results.landmarks, PoseLandmarker, DrawingUtils);
+            } else {
+              const ctx = c.getContext('2d');
+              ctx?.clearRect(0, 0, c.width, c.height);
+            }
+          }
+
+          raf = requestAnimationFrame(loop);
+        };
+
+        loop();
+      } catch (err) {
+        console.error('[pose] setup failed:', err);
+        setCameraError(
+          err.name === 'NotAllowedError'
+            ? 'Camera permission denied. Please allow camera access and try again.'
+            : 'Camera or MediaPipe failed to start. Check your browser permissions.'
+        );
+        setModelLoading(false);
+      }
+    }
+
+    setup();
+
+    return () => {
+      cancelled = true;
+      runningRef.current = false;
+      if (raf) cancelAnimationFrame(raf);
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+    };
+  }, [active, exercise, targetReps, onSessionUpdate]);
+
+  const renderExerciseMetrics = () => {
+    const spec = FORM_RULES[exercise.id];
+    if (!spec) return null;
+    return (
+      <div className="space-y-2 mt-4">
+        <span className="text-[11px] font-bold tracking-wider text-amber-400 uppercase">
+          {exercise.name} METRICS
+        </span>
+        {spec.metrics.map((m) => (
+          <MetricCard
+            key={m.key}
+            label={m.label}
+            value={formatMetric(exercise.id, m.key, liveMetrics)}
+            status={metricStatus[m.key]}
+          />
+        ))}
+        {liveIssues.length > 0 && (
+          <div className="mt-2 flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+            {liveIssues[0]}
+          </div>
+        )}
+      </div>
+    );
   };
 
-  // --- STATE A: STANDBY MODE (Before Clicking Start Workout - Matches Image 2) ---
+  // ---------------- STATE A: STANDBY ----------------
   if (!active) {
     return (
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
@@ -96,16 +251,16 @@ export default function WorkoutPanel({
           </div>
 
           <div className="flex flex-col gap-2">
-            {EXERCISE_OPTIONS.map((ex) => {
-              const isSelected = exercise?.name === ex.name;
+            {EXERCISES.map((ex) => {
+              const isSelected = exercise?.id === ex.id;
               return (
                 <button
                   key={ex.id}
                   onClick={() => setExercise(ex)}
-                  className={`flex flex-col gap-0.5 rounded-xl px-4 py-3 text-left transition-all ${
-                    isSelected 
-                      ? 'bg-[#181d28] border border-amber-500/80 shadow-[0_0_15px_rgba(245,158,11,0.15)]' 
-                      : 'bg-[#121620] border border-white/5 hover:border-white/10'
+                  className={`flex flex-col gap-0.5 rounded-xl px-4 py-3 text-left transition-all hover:-translate-y-0.5 ${
+                    isSelected
+                      ? 'bg-[#181d28] border border-amber-500/80 shadow-[0_0_15px_rgba(245,158,11,0.15)]'
+                      : 'bg-[#121620] border border-white/5 hover:border-white/10 hover:shadow-lg'
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -116,7 +271,7 @@ export default function WorkoutPanel({
                       <span className="h-2.5 w-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.9)]" />
                     )}
                   </div>
-                  <span className="text-xs text-gray-400">{ex.subtitle}</span>
+                  <span className="text-xs text-gray-400">{ex.muscles}</span>
                 </button>
               );
             })}
@@ -165,13 +320,13 @@ export default function WorkoutPanel({
 
           <button
             onClick={onStartWorkout}
-            className="mt-4 flex items-center justify-center gap-2.5 rounded-xl bg-amber-500 py-3.5 text-sm font-black tracking-widest text-black shadow-lg shadow-amber-500/20 transition-all hover:bg-amber-400 active:scale-[0.98]"
+            className="mt-4 flex items-center justify-center gap-2.5 rounded-xl bg-amber-500 py-3.5 text-sm font-black tracking-widest text-black shadow-lg shadow-amber-500/20 transition-all hover:bg-amber-400 hover:-translate-y-0.5 active:scale-[0.98]"
           >
             <Play size={16} className="fill-black" /> START WORKOUT
           </button>
         </div>
 
-        {/* Right Standby Box (Image 2 - Dashed Border Set Workout Plan Placeholder) */}
+        {/* Right Standby Box */}
         <div className="space-y-6">
           <div className="flex flex-col rounded-2xl border border-white/10 bg-[#0e1117] p-6">
             <div className="mb-4">
@@ -187,7 +342,8 @@ export default function WorkoutPanel({
                 <span>👈</span> Set your workout plan
               </h4>
               <p className="mt-2 max-w-md text-xs text-gray-400 leading-relaxed">
-                Choose your exercise, sets and reps in the left panel,<br />
+                Choose your exercise, sets and reps in the left panel,
+                <br />
                 then click <span className="text-amber-400 font-semibold">Start Workout</span> to activate camera and AI pose tracking.
               </p>
             </div>
@@ -208,69 +364,92 @@ export default function WorkoutPanel({
     );
   }
 
-  // --- STATE B: ACTIVE SESSION MODE (After Clicking Start Workout - Matches Image 1) ---
+  // ---------------- STATE B: ACTIVE SESSION ----------------
   return (
     <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
       {/* Active Left Sidebar */}
-      <div className="flex h-[580px] flex-col gap-3 overflow-y-auto pr-2 rounded-2xl bg-[#0e1117] p-4 border border-white/10 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-amber-500/40">
+      <div className="flex h-[580px] flex-col gap-3 overflow-y-auto pr-2 rounded-2xl bg-[#0e1117] p-4 border border-white/10 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-amber-500/40]">
         <div className="flex items-center gap-2 py-1 text-amber-400">
-          <Dumbbell size={16} />
-          <h2 className="text-xs font-black tracking-widest text-amber-400 uppercase">WORKOUT PLAN</h2>
+          <Activity size={16} />
+          <h2 className="text-xs font-black tracking-widest text-amber-400 uppercase">ACTIVE SESSION</h2>
         </div>
 
-        {/* Active Routine Box */}
         <div className="rounded-xl bg-[#181d28] p-4 border border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
           <span className="text-[10px] font-extrabold tracking-widest text-amber-400 uppercase">ACTIVE ROUTINE</span>
           <p className="text-lg font-black text-white mt-1">{exercise?.name || 'Squats'}</p>
           <p className="text-xs text-gray-400 mt-0.5">{targetSets} Sets Target • {targetReps} Reps / Set</p>
         </div>
 
-        {/* End Workout Button */}
         <button
           onClick={onEndWorkout}
-          className="flex items-center justify-center gap-2 rounded-xl bg-amber-500 py-3.5 text-xs font-black tracking-widest text-black shadow-lg shadow-amber-500/20 transition-all hover:bg-amber-400 active:scale-[0.98] uppercase"
+          className="flex items-center justify-center gap-2 rounded-xl bg-red-500 py-3.5 text-xs font-black tracking-widest text-white shadow-lg shadow-red-500/20 transition-all hover:bg-red-400 hover:-translate-y-0.5 active:scale-[0.98] uppercase"
         >
-          <Square size={14} className="fill-black" /> END WORKOUT
+          <Square size={14} className="fill-white" /> END WORKOUT
         </button>
 
-        {/* Progress Tracking Section */}
         <div className="space-y-2 mt-2">
           <span className="text-[11px] font-bold tracking-wider text-gray-400 uppercase">PROGRESS TRACKING</span>
-          <MetricCard label="Total Reps" value={session?.reps || 0} />
-          <MetricCard label="Current Set Reps" value={`${session?.currentSetReps || 0} / ${targetReps}`} />
-          <MetricCard label="Sets Completed" value={`${session?.set || 0} / ${targetSets}`} />
+          <MetricCard label="Total Reps" value={progress.reps} />
+          <MetricCard label="Current Set Reps" value={`${progress.currentSetReps} / ${targetReps}`} />
+          <MetricCard label="Sets Completed" value={`${progress.setsCompleted} / ${targetSets}`} />
         </div>
 
-        {/* Exercise Specific Metrics */}
         {renderExerciseMetrics()}
       </div>
 
-      {/* Active Right Panel (Image 1 - Video Stream Feed & Controls) */}
-      <div className="flex flex-col rounded-2xl border border-white/10 bg-[#0e1117] p-6 justify-between h-[580px]">
+      {/* Active Right Panel — Live camera + canvas overlay */}
+      <div className="flex flex-col rounded-2xl border border-white/10 bg-[#0e1117] p-6 h-[580px]">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-bold text-white">AI Real-time GYM Coach</h3>
             <p className="text-xs text-gray-400">Real-time pose detection with proactive AI voice coaching</p>
           </div>
-          <span className="rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-400 border border-amber-500/20">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-400 border border-amber-500/20">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
             MediaPipe Live
           </span>
         </div>
 
-        <div className="relative flex flex-col items-center justify-center rounded-xl border border-white/10 bg-black py-20 px-4 text-center my-2 flex-1">
-          <span className="mb-3 text-gray-500">
-            <Video size={44} />
-          </span>
-          <p className="text-sm font-semibold text-white">Webcam Stream Standby</p>
-          <p className="text-xs text-gray-500 mt-1">Click START to enable video feed & pose tracking</p>
+        <div className="relative flex-1 rounded-xl border border-white/10 bg-black overflow-hidden">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="absolute inset-0 h-full w-full object-contain -scale-x-100 bg-black"
+          />
+          <canvas
+            ref={canvasRef}
+            className="absolute inset-0 h-full w-full object-contain -scale-x-100 pointer-events-none"
+          />
+
+          {modelLoading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 text-center p-4">
+              <span className="mb-3 h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+              <p className="text-sm font-semibold text-white">Loading MediaPipe model…</p>
+              <p className="text-xs text-gray-400 mt-1">Please allow camera access when prompted.</p>
+            </div>
+          )}
+
+          {cameraError && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 text-center p-6">
+              <span className="mb-3 rounded-full bg-red-500/15 p-3 text-red-400">
+                <Video size={28} />
+              </span>
+              <p className="text-sm font-semibold text-white">Camera not available</p>
+              <p className="text-xs text-gray-400 mt-1 max-w-sm">{cameraError}</p>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between pt-4 border-t border-white/5 mt-2">
-          <button
-            className="rounded-xl bg-[#1c2230] px-6 py-2.5 text-xs font-bold text-white hover:bg-white/20 transition"
-          >
-            START
-          </button>
+          <p className="text-xs text-gray-500">
+            {cameraError
+              ? 'Tracking paused'
+              : modelLoading
+              ? 'Initializing camera and pose model…'
+              : 'Camera active • MediaPipe pose tracking running locally'}
+          </p>
           <div className="flex items-center gap-2 text-xs text-gray-400">
             <span>SELECT DEVICE:</span>
             <select className="rounded-lg bg-[#161b22] px-3 py-1.5 text-white border border-white/10 focus:outline-none">

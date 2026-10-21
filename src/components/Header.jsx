@@ -1,8 +1,17 @@
-import { Activity, Home, History } from 'lucide-react';
+import { Activity, History, Dumbbell } from 'lucide-react';
+
+function initials(name = '') {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((n) => n[0].toUpperCase())
+    .join('');
+}
 
 export default function Header({ tab, setTab, user }) {
   const tabs = [
-    { id: 'home', label: 'Home', icon: Home },
+    { id: 'home', label: 'Workout', icon: Dumbbell },
     { id: 'history', label: 'Workout History', icon: History },
   ];
 
@@ -37,13 +46,16 @@ export default function Header({ tab, setTab, user }) {
           ))}
         </nav>
 
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-bold text-black">
-            {user.name.charAt(0)}
-          </span>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-600 text-sm font-bold text-black shadow-[0_0_12px_rgba(245,158,11,0.45)]">
+              {initials(user.name)}
+            </span>
+            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-[#12151e] shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+          </div>
           <div className="hidden text-right leading-tight md:block">
-            <p className="text-[11px] text-gray-500">Logged in as</p>
-            <p className="text-xs font-semibold text-white">{user.name}</p>
+            <p className="text-[11px] text-gray-500">Good workout,</p>
+            <p className="text-xs font-semibold text-white capitalize">{user.name}</p>
           </div>
         </div>
       </div>

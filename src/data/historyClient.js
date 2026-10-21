@@ -1,27 +1,36 @@
-// Client for the workout history API (SQLite-backed on the server).
-// Falls back to an empty list if the API is unreachable so the UI never breaks.
-export async function fetchHistory(username) {
+// Client-side workout history persistence.
+// Phase 5 stores sessions in localStorage so the app runs without a backend.
+// Data resets if the browser storage is cleared.
+
+const keyFor = (username) => `apna-coach-history-${username}`;
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export function fetchHistory(username) {
+  if (!username) return [];
   try {
-    const res = await fetch(`/api/history?user=${encodeURIComponent(username)}`);
-    if (!res.ok) throw new Error(`history fetch failed: ${res.status}`);
-    const data = await res.json();
-    return data.sessions || [];
-  } catch (err) {
-    console.warn('[history] fetch failed:', err.message);
+    const raw = localStorage.getItem(keyFor(username));
+    const sessions = raw ? JSON.parse(raw) : [];
+    return Array.isArray(sessions) ? sessions : [];
+  } catch {
     return [];
   }
 }
 
-export async function saveWorkout(username, session) {
+export function saveWorkout(username, session) {
+  if (!username || !session) return false;
   try {
-    const res = await fetch('/api/history', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, ...session }),
+    const list = fetchHistory(username);
+    list.unshift({
+      id: Date.now(),
+      date: today(),
+      ...session,
     });
-    return res.ok;
-  } catch (err) {
-    console.warn('[history] save failed:', err.message);
+    localStorage.setItem(keyFor(username), JSON.stringify(list.slice(0, 100)));
+    return true;
+  } catch {
     return false;
   }
 }

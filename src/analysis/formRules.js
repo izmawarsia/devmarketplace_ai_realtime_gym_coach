@@ -39,7 +39,7 @@ export const FORM_RULES = {
       { key: 'swing', label: 'Swing Detection', unit: '' },
     ],
     rules: [
-      { check: (t) => t.swing === 'detected', issue: 'Momentum swing detected — slow down', metric: 'swing' },
+      { check: (t) => t.swing === 'SWINGING', issue: 'Momentum swing detected — slow down', metric: 'swing' },
       { check: (t) => t.shoulderStability > 15, issue: 'Shoulder drifting forward — pin elbows at sides', metric: 'shoulderStability' },
       { check: (t) => t.partialRep, issue: 'Partial range of motion — fully extend at bottom', metric: 'elbowAngle' },
     ],
@@ -64,7 +64,7 @@ export const FORM_RULES = {
     rules: [
       { check: (t) => t.kneeOverToe, issue: 'Front knee past toes — step wider', metric: 'frontKneeAngle' },
       { check: (t) => t.torsoAngle > 15, issue: 'Torso leaning — stay upright', metric: 'torsoAngle' },
-      { check: (t) => t.balance === 'unstable', issue: 'Balance unstable — slow the descent', metric: 'balance' },
+      { check: (t) => t.balance === 'OFF BALANCE', issue: 'Balance unstable — slow the descent', metric: 'balance' },
     ],
   },
 };

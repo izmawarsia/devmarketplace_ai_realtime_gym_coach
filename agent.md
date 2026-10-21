@@ -64,7 +64,6 @@ $$\theta = \arccos\left(\max\left(-1.0, \min\left(1.0, \frac{\mathbf{a} \cdot \m
 6. Update sidebar progress metrics dynamically in real time as the user performs reps.
 
 
-
 ### Phase 4: Groq LLM Coaching, Speech Synthesis & Persistence
 
 * **Goal**: Integrate context-aware AI feedback, voice output, and session history logging.
@@ -74,7 +73,57 @@ $$\theta = \arccos\left(\max\left(-1.0, \min\left(1.0, \frac{\mathbf{a} \cdot \m
 3. Configure the DevMarketplace Built-in Database to save workout sessions (`user_id`, `exercise_name`, `reps`, `sets`, `time`, `timestamp`).
 4. Render persistent workout history in a clean data table component.
 
+# Phase 5: Client-Side MediaPipe WASM & Exercise Detectors Migration
 
+## 1. Architecture Workflow (Browser-Side Processing)
+This phase shifts the application from Streamlit WebRTC to pure client-side browser processing to achieve zero latency and high performance[cite: 22]:
+- **User Webcam**: The browser accesses the webcam stream directly using `navigator.mediaDevices.getUserMedia`.
+- **HTML5 Video Element**: The stream is played within a hidden or visible video element.
+- **MediaPipe WASM (In-Browser)**: The MediaPipe Pose model runs locally within the browser to analyze each frame.
+- **33 Pose Landmarks Object**: 33 keypoints (joint coordinates and visibility) are extracted from the model[cite: 22].
+- **HTML5 Canvas**: Skeleton overlays and joint angles are drawn directly onto the canvas[cite: 22].
+
+## 2. Core Base Exercise Class
+**File Path:** `src/core/base_exercise.js`
+
+- **Instructions:**
+  - Port the Python `BaseExercise` abstract class into JavaScript (ES6 class).
+  - Implement the `calculate_angle(a, b, c)` method using vector dot products and `Math.acos` to compute the angle between three points (A, B, C) in degrees.
+  - Create the `get_point(landmarks, idx)` method to return `(x, y)` coordinates from a landmark index.
+  - Keep `process(landmarks)` and `reset()` methods as abstract/placeholders to be overridden by child classes.
+
+## 3. Exercise Detectors Implementation
+All detectors must be built as JavaScript classes inside the `src/detectors/` folder:
+
+### A. Squat Detector
+**File Path:** `src/detectors/squat.js`
+- **Logic:** Calculate left/right hip, knee, and ankle angles. If the knee angle is `< 100`, the stage becomes `"down"`. When the angle goes `>= 160` while the stage is `"down"`, increment the rep count by `+1`. Return the depth status (`GOOD DEPTH`, `TOO HIGH`, `STANDING`).
+
+### B. Biceps Curl Detector
+**File Path:** `src/detectors/biceps_curl.js`
+- **Logic:** Calculate the elbow angle between the shoulder, elbow, and wrist. Thresholds: UP `< 50`, DOWN `> 160`. Also port the logic to check elbow drift and torso swing status (`NO SWING` / `SWINGING`).
+
+### C. Lunges Detector
+**File Path:** `src/detectors/lunges.js`
+- **Logic:** Calculate the front knee angle (`DOWN_THRESHOLD = 100`, `UP_THRESHOLD = 160`). Calculate the torso angle and return the balance status (`BALANCED` / `OFF BALANCE`).
+
+### D. Push-up Detector
+**File Path:** `src/detectors/pushup.js`
+- **Logic:** Calculate the elbow angle (`DOWN = 90`, `UP = 160`) and body alignment angle. Track the hip sag status (`LEVEL`, `SAGGING`, `PIKED UP`).
+
+### E. Shoulder Press Detector
+**File Path:** `src/detectors/shoulder_press.js`
+- **Logic:** Calculate the elbow angle (`UP = 160`, `DOWN = 90`) and back arch status (`Neutral`, `Slight Arch`, `Excessive Arch`).
+
+
+## 4. UI & Video Integration Component
+**File Path:** `src/components/WorkoutPanel.jsx`
+
+- **Instructions:**
+  - When the user clicks the **START WORKOUT** button, render the HTML5 `<video>` and `<canvas>` elements in the right panel.
+  - Initialize the live camera feed by calling the browser's `navigator.mediaDevices.getUserMedia`.
+  - Initialize the MediaPipe Pose model and run the active exercise detector class's `process(landmarks)` method on every frame via a `requestAnimationFrame` loop.
+  - Update real-time values returned by the detectors (such as total reps, current set reps, knee angle, depth status) in the state and render them dynamically onto the left panel's metric cards.
 
 ## Code Gig Deliverables (DevMarketplace Requirement)
 
