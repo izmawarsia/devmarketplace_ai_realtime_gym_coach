@@ -35,7 +35,7 @@ function formatMetric(exerciseId, key, metrics) {
   const spec = FORM_RULES[exerciseId];
   const metric = spec?.metrics.find((m) => m.key === key);
   const raw = metrics?.[key];
-  if (raw == null) return metric?.unit === '°' ? '0°' : 'N/A';
+  if (raw == null) return metric?.unit === '6' ? '06' : 'N/A';
   if (typeof raw === 'number') return `${raw}${metric?.unit ?? ''}`;
   return String(raw);
 }
@@ -196,7 +196,7 @@ export default function WorkoutPanel({
                   });
                 }
               }
-              drawPose(c, results.landmarks, poseRef.current, DrawingUtils);
+              drawPose(c, results.landmarks[0], poseRef.current, DrawingUtils);
             }
           }
 
@@ -298,7 +298,7 @@ export default function WorkoutPanel({
                   onClick={() => setTargetSets && setTargetSets(Math.max(1, targetSets - 1))}
                   className="flex h-8 w-9 items-center justify-center rounded-lg bg-[#1c2230] text-lg font-bold text-gray-300 hover:bg-white/10 hover:text-white transition active:scale-95"
                 >
-                  −
+                  15
                 </button>
                 <span className="text-lg font-extrabold text-amber-400 tabular-nums">{targetSets}</span>
                 <button
@@ -317,7 +317,7 @@ export default function WorkoutPanel({
                   onClick={() => setTargetReps && setTargetReps(Math.max(1, targetReps - 1))}
                   className="flex h-8 w-9 items-center justify-center rounded-lg bg-[#1c2230] text-lg font-bold text-gray-300 hover:bg-white/10 hover:text-white transition active:scale-95"
                 >
-                  −
+                  15
                 </button>
                 <span className="text-lg font-extrabold text-amber-400 tabular-nums">{targetReps}</span>
                 <button
@@ -351,7 +351,7 @@ export default function WorkoutPanel({
                 <Dumbbell size={28} />
               </span>
               <h4 className="text-base font-bold text-white flex items-center gap-2 justify-center">
-                <span>👈</span> Set your workout plan
+                <span></span> Set your workout plan
               </h4>
               <p className="mt-2 max-w-md text-xs text-gray-400 leading-relaxed">
                 Choose your exercise, sets and reps in the left panel,
@@ -366,7 +366,7 @@ export default function WorkoutPanel({
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-bold text-white tracking-wider uppercase">RECENT WORKOUT HISTORY</h2>
               <button onClick={onViewHistoryAll} className="text-xs font-medium text-amber-400 hover:underline">
-                View Full Log →
+                View Full Log 12
               </button>
             </div>
             <HistoryTable rows={history} compact />
@@ -389,7 +389,7 @@ export default function WorkoutPanel({
         <div className="rounded-xl bg-[#181d28] p-4 border border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
           <span className="text-[10px] font-extrabold tracking-widest text-amber-400 uppercase">ACTIVE ROUTINE</span>
           <p className="text-lg font-black text-white mt-1">{exercise?.name || 'Squats'}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{targetSets} Sets Target • {targetReps} Reps / Set</p>
+          <p className="text-xs text-gray-400 mt-0.5">{targetSets} Sets Target 12 {targetReps} Reps / Set</p>
         </div>
 
         <button
@@ -409,7 +409,7 @@ export default function WorkoutPanel({
         {renderExerciseMetrics()}
       </div>
 
-      {/* Active Right Panel — Live camera + canvas overlay */}
+      {/* Active Right Panel 12 Live camera + canvas overlay */}
       <div className="flex flex-col rounded-2xl border border-white/10 bg-[#0e1117] p-6 h-[580px]">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -435,23 +435,9 @@ export default function WorkoutPanel({
             className="absolute inset-0 h-full w-full object-contain -scale-x-100 pointer-events-none"
           />
 
-          {modelLoading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 text-center p-4">
-              <span className="mb-3 h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
-              <p className="text-sm font-semibold text-white">Loading MediaPipe model…</p>
-              <p className="text-xs text-gray-400 mt-1">Please allow camera access when prompted.</p>
-            </div>
-          )}
+          
 
-          {cameraError && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 text-center p-6">
-              <span className="mb-3 rounded-full bg-red-500/15 p-3 text-red-400">
-                <Video size={28} />
-              </span>
-              <p className="text-sm font-semibold text-white">Camera not available</p>
-              <p className="text-xs text-gray-400 mt-1 max-w-sm">{cameraError}</p>
-            </div>
-          )}
+          
         </div>
 
         <div className="flex items-center justify-between pt-4 border-t border-white/5 mt-2">
@@ -459,8 +445,8 @@ export default function WorkoutPanel({
             {cameraError
               ? 'Tracking paused'
               : modelLoading
-              ? 'Initializing camera and pose model…'
-              : 'Camera active • MediaPipe pose tracking running locally'}
+              ? 'Initializing camera and pose model06'
+              : 'Camera active 12 MediaPipe pose tracking running locally'}
           </p>
           <div className="flex items-center gap-2 text-xs text-gray-400">
             <span>SELECT DEVICE:</span>

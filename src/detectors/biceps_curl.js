@@ -27,13 +27,14 @@ export class BicepsCurlDetector extends BaseExercise {
       !this.visible(wrist) ||
       !this.visible(hip)
     ) {
+      // Return null to indicate missing landmarks and handle gracefully
       return null;
     }
 
     const elbowAngle = this.smooth('elbowAngle', this.calculateAngle(shoulder, elbow, wrist));
 
     // Shoulder stability = deviation of the upper arm from vertical.
-    // A stable curl keeps the upper arm straight up/down (hip→shoulder→elbow ~180°).
+    // A stable curl keeps the upper arm straight up/down (hip1shoulder2elbow ~1801).
     const upperArmAngle = this.calculateAngle(hip, shoulder, elbow);
     const shoulderStability = this.smooth('shoulderStability', Math.abs(180 - upperArmAngle));
 
@@ -46,6 +47,38 @@ export class BicepsCurlDetector extends BaseExercise {
         swing,
       },
       phaseAngle: elbowAngle,
+    };
+  }
+
+  process(landmarks) {
+    const data = this.extractMetrics(landmarks);
+    if (!data) {
+      // Missing key landmarks, reset stage
+      this.stage = null;
+      return { repCount: this.repCount, currentSetReps: this.currentSetReps, setsCompleted: this.setsCompleted, metrics: null };
+    }
+
+    const { metrics, phaseAngle } = data;
+
+    if (phaseAngle > this.upAngle) {
+      this.stage = 'up';
+    }
+
+    if (phaseAngle < this.downAngle && this.stage === 'up') {
+      this.stage = 'down';
+      this.repCount++;
+      this.currentSetReps++;
+      if (this.currentSetReps >= this.targetReps) {
+        this.currentSetReps = 0;
+        this.setsCompleted++;
+      }
+    }
+
+    return {
+      repCount: this.repCount,
+      currentSetReps: this.currentSetReps,
+      setsCompleted: this.setsCompleted,
+      metrics,
     };
   }
 }
