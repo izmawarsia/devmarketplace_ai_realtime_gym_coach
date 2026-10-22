@@ -35,7 +35,7 @@ function formatMetric(exerciseId, key, metrics) {
   const spec = FORM_RULES[exerciseId];
   const metric = spec?.metrics.find((m) => m.key === key);
   const raw = metrics?.[key];
-  if (raw == null) return metric?.unit === '°' ? '0°' : 'N/A';
+  if (raw == null) return metric?.unit === '6' ? '06' : 'N/A';
   if (typeof raw === 'number') return `${raw}${metric?.unit ?? ''}`;
   return String(raw);
 }
@@ -59,6 +59,10 @@ export default function WorkoutPanel({
   const canvasRef = useRef(null);
   const runningRef = useRef(false);
   const lastLiftRef = useRef(0);
+  const onSessionUpdateRef = useRef(onSessionUpdate);
+
+  // Keep the latest callback without restarting the camera/model effect on every parent render.
+  useEffect(() => { onSessionUpdateRef.current = onSessionUpdate; }, [onSessionUpdate]);
 
   const [modelLoading, setModelLoading] = useState(false);
   const [cameraError, setCameraError] = useState(null);
@@ -91,16 +95,18 @@ export default function WorkoutPanel({
 
     let cancelled = false;
     let stream = null;
-    let pose = null;
     let raf = null;
-    const detector = createDetector(exercise, targetReps);
+
+    // Use refs to persist PoseLandmarker and detector instances
+    const poseRef = { current: null };
+    const detectorRef = { current: null };
 
     setModelLoading(true);
     setCameraError(null);
 
     async function setup() {
       try {
-        const [{ PoseLandmarker, FilesetResolver, DrawingUtils }, mediaStream] =
+        const [{ PoseLandmarker, FilesetResolver }, mediaStream] =
           await Promise.all([
             import('@mediapipe/tasks-vision'),
             navigator.mediaDevices.getUserMedia({
@@ -128,36 +134,49 @@ export default function WorkoutPanel({
           'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
         );
 
-        pose = await PoseLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath:
-              'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
-            delegate: 'GPU',
-          },
-          runningMode: 'VIDEO',
-          numPoses: 1,
-        });
+        // Initialize PoseLandmarker only once
+        if (!poseRef.current) {
+          poseRef.current = await PoseLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath:
+                'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
+              delegate: 'GPU',
+            },
+            runningMode: 'VIDEO',
+            numPoses: 1,
+          });
+        }
+
+        // Initialize detector only once per exercise and targetReps
+        if (!detectorRef.current || detectorRef.current.exerciseId !== exercise.id || detectorRef.current.targetReps !== targetReps) {
+          detectorRef.current = createDetector(exercise, targetReps);
+          detectorRef.current.exerciseId = exercise.id;
+          detectorRef.current.targetReps = targetReps;
+        }
 
         if (cancelled) return;
         setModelLoading(false);
 
         runningRef.current = true;
 
-        const loop = () => {
+        const loop = async () => {
           if (!runningRef.current) return;
           const v = videoRef.current;
           const c = canvasRef.current;
 
           if (v && c && v.readyState >= 2) {
-            if (c.width !== v.videoWidth) {
+            if (c.width !== v.videoWidth || c.height !== v.videoHeight) {
               c.width = v.videoWidth;
               c.height = v.videoHeight;
             }
 
-            const results = pose.detectForVideo(v, performance.now());
+            const results = await poseRef.current.detectForVideo(v, performance.now());
+
+            const ctx = c.getContext('2d');
+            ctx.clearRect(0, 0, c.width, c.height);
 
             if (results.landmarks?.[0]) {
-              const out = detector.process(results.landmarks[0]);
+              const out = detectorRef.current.process(results.landmarks[0]);
               if (out.metrics) {
                 setLiveMetrics(out.metrics);
                 const { issues, metricStatus: status } = analyzeForm(exercise.id, out.metrics);
@@ -170,9 +189,9 @@ export default function WorkoutPanel({
                 });
 
                 const now = performance.now();
-                if (onSessionUpdate && now - lastLiftRef.current > 250) {
+                if (onSessionUpdateRef.current && now - lastLiftRef.current > 250) {
                   lastLiftRef.current = now;
-                  onSessionUpdate({
+                  onSessionUpdateRef.current({
                     reps: out.repCount,
                     currentSetReps: out.currentSetReps,
                     set: out.setsCompleted,
@@ -181,10 +200,7 @@ export default function WorkoutPanel({
                   });
                 }
               }
-              drawPose(c, results.landmarks, PoseLandmarker, DrawingUtils);
-            } else {
-              const ctx = c.getContext('2d');
-              ctx?.clearRect(0, 0, c.width, c.height);
+              drawPose(c, results.landmarks[0]);
             }
           }
 
@@ -211,7 +227,7 @@ export default function WorkoutPanel({
       if (raf) cancelAnimationFrame(raf);
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
-  }, [active, exercise, targetReps, onSessionUpdate]);
+  }, [active, exercise, targetReps]);
 
   const renderExerciseMetrics = () => {
     const spec = FORM_RULES[exercise.id];
@@ -286,7 +302,7 @@ export default function WorkoutPanel({
                   onClick={() => setTargetSets && setTargetSets(Math.max(1, targetSets - 1))}
                   className="flex h-8 w-9 items-center justify-center rounded-lg bg-[#1c2230] text-lg font-bold text-gray-300 hover:bg-white/10 hover:text-white transition active:scale-95"
                 >
-                  −
+                  15
                 </button>
                 <span className="text-lg font-extrabold text-amber-400 tabular-nums">{targetSets}</span>
                 <button
@@ -305,7 +321,7 @@ export default function WorkoutPanel({
                   onClick={() => setTargetReps && setTargetReps(Math.max(1, targetReps - 1))}
                   className="flex h-8 w-9 items-center justify-center rounded-lg bg-[#1c2230] text-lg font-bold text-gray-300 hover:bg-white/10 hover:text-white transition active:scale-95"
                 >
-                  −
+                  15
                 </button>
                 <span className="text-lg font-extrabold text-amber-400 tabular-nums">{targetReps}</span>
                 <button
@@ -339,7 +355,7 @@ export default function WorkoutPanel({
                 <Dumbbell size={28} />
               </span>
               <h4 className="text-base font-bold text-white flex items-center gap-2 justify-center">
-                <span>👈</span> Set your workout plan
+                <span></span> Set your workout plan
               </h4>
               <p className="mt-2 max-w-md text-xs text-gray-400 leading-relaxed">
                 Choose your exercise, sets and reps in the left panel,
@@ -354,7 +370,7 @@ export default function WorkoutPanel({
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-bold text-white tracking-wider uppercase">RECENT WORKOUT HISTORY</h2>
               <button onClick={onViewHistoryAll} className="text-xs font-medium text-amber-400 hover:underline">
-                View Full Log →
+                View Full Log 12
               </button>
             </div>
             <HistoryTable rows={history} compact />
@@ -377,7 +393,7 @@ export default function WorkoutPanel({
         <div className="rounded-xl bg-[#181d28] p-4 border border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
           <span className="text-[10px] font-extrabold tracking-widest text-amber-400 uppercase">ACTIVE ROUTINE</span>
           <p className="text-lg font-black text-white mt-1">{exercise?.name || 'Squats'}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{targetSets} Sets Target • {targetReps} Reps / Set</p>
+          <p className="text-xs text-gray-400 mt-0.5">{targetSets} Sets Target 12 {targetReps} Reps / Set</p>
         </div>
 
         <button
@@ -397,7 +413,7 @@ export default function WorkoutPanel({
         {renderExerciseMetrics()}
       </div>
 
-      {/* Active Right Panel — Live camera + canvas overlay */}
+      {/* Active Right Panel 12 Live camera + canvas overlay */}
       <div className="flex flex-col rounded-2xl border border-white/10 bg-[#0e1117] p-6 h-[580px]">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -423,23 +439,9 @@ export default function WorkoutPanel({
             className="absolute inset-0 h-full w-full object-contain -scale-x-100 pointer-events-none"
           />
 
-          {modelLoading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 text-center p-4">
-              <span className="mb-3 h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
-              <p className="text-sm font-semibold text-white">Loading MediaPipe model…</p>
-              <p className="text-xs text-gray-400 mt-1">Please allow camera access when prompted.</p>
-            </div>
-          )}
+          
 
-          {cameraError && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 text-center p-6">
-              <span className="mb-3 rounded-full bg-red-500/15 p-3 text-red-400">
-                <Video size={28} />
-              </span>
-              <p className="text-sm font-semibold text-white">Camera not available</p>
-              <p className="text-xs text-gray-400 mt-1 max-w-sm">{cameraError}</p>
-            </div>
-          )}
+          
         </div>
 
         <div className="flex items-center justify-between pt-4 border-t border-white/5 mt-2">
@@ -447,8 +449,8 @@ export default function WorkoutPanel({
             {cameraError
               ? 'Tracking paused'
               : modelLoading
-              ? 'Initializing camera and pose model…'
-              : 'Camera active • MediaPipe pose tracking running locally'}
+              ? 'Initializing camera and pose model06'
+              : 'Camera active 12 MediaPipe pose tracking running locally'}
           </p>
           <div className="flex items-center gap-2 text-xs text-gray-400">
             <span>SELECT DEVICE:</span>

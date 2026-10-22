@@ -1,30 +1,76 @@
+
 /**
- * Draw MediaPipe pose landmarks and skeleton on a canvas overlay.
- * Uses the DrawingUtils exported by @mediapipe/tasks-vision.
- *
- * The canvas is mirrored via CSS (-scale-x-100) to match the mirrored video
- * preview, so we draw landmarks in the original coordinate space.
+ * Draw connected body skeleton lines.
+ * Joint dots are intentionally disabled.
  */
 
-export async function drawPose(canvas, landmarks, PoseLandmarker, DrawingUtils) {
+const SKELETON_CONNECTIONS = [
+  [11, 12], // Shoulders
+
+  [11, 13], // Left upper arm
+  [13, 15], // Left forearm
+
+  [12, 14], // Right upper arm
+  [14, 16], // Right forearm
+
+  [11, 23], // Left torso
+  [12, 24], // Right torso
+  [23, 24], // Hips
+
+  [23, 25], // Left thigh
+  [25, 27], // Left shin
+  [27, 29], // Left ankle/heel
+  [29, 31], // Left foot
+
+  [24, 26], // Right thigh
+  [26, 28], // Right shin
+  [28, 30], // Right ankle/heel
+  [30, 32], // Right foot
+
+  [15, 17], // Left hand
+  [15, 19],
+  [15, 21],
+
+  [16, 18], // Right hand
+  [16, 20],
+  [16, 22],
+];
+
+export function drawPose(canvas, landmarks) {
   if (!canvas || !landmarks?.length) return;
 
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  const utils = new DrawingUtils(ctx);
+  ctx.save();
 
-  utils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, {
-    color: 'rgba(16, 185, 129, 0.85)',
-    lineWidth: 3,
-  });
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(16, 220, 170, 0.96)";
+  ctx.lineWidth = Math.max(3, canvas.width / 300);
+  ctx.shadowColor = "rgba(16, 220, 170, 0.35)";
+  ctx.shadowBlur = 5;
 
-  utils.drawLandmarks(landmarks, {
-    color: 'rgba(245, 158, 11, 0.9)',
-    fillColor: 'rgba(245, 158, 11, 0.9)',
-    lineWidth: 1,
-    radius: 4,
-  });
+  for (const [from, to] of SKELETON_CONNECTIONS) {
+    const a = landmarks[from];
+    const b = landmarks[to];
+
+    if (!a || !b) continue;
+
+    if (
+      (a.visibility ?? 1) < 0.35 ||
+      (b.visibility ?? 1) < 0.35
+    ) {
+      continue;
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(a.x * canvas.width, a.y * canvas.height);
+    ctx.lineTo(b.x * canvas.width, b.y * canvas.height);
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
