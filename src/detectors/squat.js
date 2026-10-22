@@ -5,8 +5,32 @@ export class SquatDetector extends BaseExercise {
     super('squats', {
       upAngle: 160,
       downAngle: 100,
+      visibilityThreshold: 0.3,
       ...options,
     });
+  }
+
+  // Enforce rep counting logic: Knee angle < 100 = down, >= 160 = up (rep counted on up)
+  updateState(phaseAngle) {
+    if (this.isComplete || phaseAngle == null || Number.isNaN(phaseAngle)) return;
+    // Rep counted ONLY on standing up after squat (knee angle >= up threshold)
+    // Only increment rep when coming from down (squat) to up (stand)
+    if (this.state === 'down' && phaseAngle >= this.upAngle) {
+      this.state = 'up';
+      this.repCount += 1;
+      this.currentSetReps += 1;
+      if (this.currentSetReps >= this.targetReps) {
+        this.setsCompleted += 1;
+        this.currentSetReps = 0;
+      }
+      if (this.isComplete) this.state = 'complete';
+      return;
+    }
+    // Down phase if knee angle < down threshold
+    // Down phase if knee angle < down threshold
+    if (this.state === 'up' && phaseAngle < this.downAngle) {
+      this.state = 'down';
+    }
   }
 
   extractMetrics(landmarks) {
@@ -21,13 +45,8 @@ export class SquatDetector extends BaseExercise {
     const knee = this.getPoint(landmarks, side === 0 ? 25 : 26);
     const ankle = this.getPoint(landmarks, side === 0 ? 27 : 28);
 
-    if (
-      !this.visible(shoulder) ||
-      !this.visible(hip) ||
-      !this.visible(knee) ||
-      !this.visible(ankle)
-    ) {
-      // Return null to indicate missing landmarks and handle gracefully
+    if (!this.visible(shoulder) || !this.visible(hip) || !this.visible(knee) || !this.visible(ankle)) {
+      // Not enough lower-body landmarks; prompt user in UI.
       return null;
     }
 
@@ -38,6 +57,11 @@ export class SquatDetector extends BaseExercise {
     if (kneeAngle < 90) depth = 'GOOD DEPTH';
     else if (kneeAngle < 160) depth = 'TOO HIGH';
 
+    // Handle missing landmarks gracefully in metrics
+    if (Number.isNaN(kneeAngle) || Number.isNaN(backAngle)) {
+      return null;
+    }
+
     return {
       metrics: {
         kneeAngle: Math.round(kneeAngle),
@@ -45,38 +69,6 @@ export class SquatDetector extends BaseExercise {
         depth,
       },
       phaseAngle: kneeAngle,
-    };
-  }
-
-  process(landmarks) {
-    const data = this.extractMetrics(landmarks);
-    if (!data) {
-      // Missing key landmarks, reset stage
-      this.stage = null;
-      return { repCount: this.repCount, currentSetReps: this.currentSetReps, setsCompleted: this.setsCompleted, metrics: null };
-    }
-
-    const { metrics, phaseAngle } = data;
-
-    if (phaseAngle > this.upAngle) {
-      this.stage = 'down';
-    }
-
-    if (phaseAngle < this.downAngle && this.stage === 'down') {
-      this.stage = 'up';
-      this.repCount++;
-      this.currentSetReps++;
-      if (this.currentSetReps >= this.targetReps) {
-        this.currentSetReps = 0;
-        this.setsCompleted++;
-      }
-    }
-
-    return {
-      repCount: this.repCount,
-      currentSetReps: this.currentSetReps,
-      setsCompleted: this.setsCompleted,
-      metrics,
     };
   }
 }

@@ -8,8 +8,8 @@ import { LungeDetector } from './lunges.js';
  * Create an exercise detector for the currently selected exercise.
  * `exercise` must be an item from src/data/exercises.js (id + name).
  */
-export function createDetector(exercise, targetReps = 10) {
-  const opts = { targetReps };
+export function createDetector(exercise, targetReps = 10, targetSets = 3) {
+  const opts = { targetReps, targetSets };
 
   switch (exercise?.id) {
     case 'squats':

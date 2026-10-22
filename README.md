@@ -49,3 +49,10 @@ accent `#f59e0b`), lucide-react icons, `@mediapipe/tasks-vision`.
 - No backend or LLM dependencies are included in this phase. The app runs
   entirely in the browser and needs only camera permission.
 - Workout history is stored in `localStorage` per logged-in username.
+
+## Phase 5 Stability & Feature Upgrades
+- MediaPipe WASM runs in-browser for low-latency skeleton tracking.
+- Live skeleton overlay and metrics update on every frame with zero loader UI.
+- Detectors (squat, biceps curl, etc.) are robust to partial occlusions and handle missing landmarks gracefully.
+- Calories/accuracy formulas are capped and realistic.
+- "Target Completed" popup appears only after all sets & reps are finished; workout timer and reps stop at completion.

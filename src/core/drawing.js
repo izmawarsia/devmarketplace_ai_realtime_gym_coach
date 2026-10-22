@@ -1,76 +1,85 @@
-
-/**
- * Draw connected body skeleton lines.
- * Joint dots are intentionally disabled.
- */
-
-const SKELETON_CONNECTIONS = [
-  [11, 12], // Shoulders
-
-  [11, 13], // Left upper arm
-  [13, 15], // Left forearm
-
-  [12, 14], // Right upper arm
-  [14, 16], // Right forearm
-
-  [11, 23], // Left torso
-  [12, 24], // Right torso
-  [23, 24], // Hips
-
-  [23, 25], // Left thigh
-  [25, 27], // Left shin
-  [27, 29], // Left ankle/heel
-  [29, 31], // Left foot
-
-  [24, 26], // Right thigh
-  [26, 28], // Right shin
-  [28, 30], // Right ankle/heel
-  [30, 32], // Right foot
-
-  [15, 17], // Left hand
-  [15, 19],
-  [15, 21],
-
-  [16, 18], // Right hand
-  [16, 20],
-  [16, 22],
+// Local pose connections to avoid bundling @mediapipe/pose directly.
+// Index pairs follow the MediaPipe pose landmark indices.
+const POSE_CONNECTIONS = [
+  // Shoulders
+  [11, 12],
+  // Left arm
+  [11, 13],
+  [13, 15],
+  // Right arm
+  [12, 14],
+  [14, 16],
+  // Torso
+  [11, 23],
+  [12, 24],
+  [23, 24],
+  // Hips to knees
+  [23, 25],
+  [24, 26],
+  // Knees to ankles
+  [25, 27],
+  [26, 28],
 ];
 
+/** Draw a high-contrast connected pose skeleton on the camera canvas. */
 export function drawPose(canvas, landmarks) {
   if (!canvas || !landmarks?.length) return;
-
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
+  // Clear old frame.
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  const scale = Math.min(canvas.width, canvas.height) || 1;
+  const lineWidth = Math.max(3, Math.min(6, scale * 0.012));
+  const radius = Math.max(3, Math.min(5, scale * 0.009));
+
+  const visible = (p) => p && (p.visibility == null || p.visibility >= 0.2);
+
   ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
 
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.strokeStyle = "rgba(16, 220, 170, 0.96)";
-  ctx.lineWidth = Math.max(3, canvas.width / 300);
-  ctx.shadowColor = "rgba(16, 220, 170, 0.35)";
-  ctx.shadowBlur = 5;
+  // Skeleton lines
+  ctx.strokeStyle = '#32F5C1';
+  ctx.lineWidth = lineWidth;
+  ctx.shadowColor = 'rgba(50,245,193,0.8)';
+  ctx.shadowBlur = 7;
 
-  for (const [from, to] of SKELETON_CONNECTIONS) {
+  for (const [from, to] of POSE_CONNECTIONS) {
     const a = landmarks[from];
     const b = landmarks[to];
-
     if (!a || !b) continue;
-
-    if (
-      (a.visibility ?? 1) < 0.35 ||
-      (b.visibility ?? 1) < 0.35
-    ) {
-      continue;
-    }
-
+    if (!visible(a) || !visible(b)) continue;
     ctx.beginPath();
     ctx.moveTo(a.x * canvas.width, a.y * canvas.height);
     ctx.lineTo(b.x * canvas.width, b.y * canvas.height);
     ctx.stroke();
   }
 
+  // Joint circles on top
+  ctx.shadowBlur = 3;
+  ctx.fillStyle = '#F7FFFD';
+  ctx.strokeStyle = '#32F5C1';
+  ctx.lineWidth = Math.max(2, lineWidth * 0.45);
+
+  const drawn = new Set();
+  for (const [from, to] of POSE_CONNECTIONS) {
+    for (const idx of [from, to]) {
+      if (drawn.has(idx)) continue;
+      drawn.add(idx);
+      const p = landmarks[idx];
+      if (!p) continue;
+      if (!visible(p)) continue;
+      ctx.beginPath();
+      ctx.arc(p.x * canvas.width, p.y * canvas.height, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
   ctx.restore();
 }
+
+// Export POSE_CONNECTIONS for testing/diagnostics (not used in main app)
+export { POSE_CONNECTIONS };

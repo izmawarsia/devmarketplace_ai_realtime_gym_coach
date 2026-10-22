@@ -35,10 +35,24 @@ function formatMetric(exerciseId, key, metrics) {
   const spec = FORM_RULES[exerciseId];
   const metric = spec?.metrics.find((m) => m.key === key);
   const raw = metrics?.[key];
-  if (raw == null) return metric?.unit === '6' ? '06' : 'N/A';
+  if (raw == null) return metric?.unit === '°' ? '0°' : 'N/A';
   if (typeof raw === 'number') return `${raw}${metric?.unit ?? ''}`;
   return String(raw);
 }
+
+function formatDuration(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+const METS = {
+  squats: 5.0,
+  pushups: 8.0,
+  biceps_curls: 3.8,
+  shoulder_press: 5.0,
+  lunges: 4.5,
+};
 
 export default function WorkoutPanel({
   active,
@@ -57,25 +71,27 @@ export default function WorkoutPanel({
 }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const poseLandmarkerRef = useRef(null);
+  const detectorRef = useRef(null);
   const runningRef = useRef(false);
   const lastLiftRef = useRef(0);
   const onSessionUpdateRef = useRef(onSessionUpdate);
 
-  // Keep the latest callback without restarting the camera/model effect on every parent render.
-  useEffect(() => { onSessionUpdateRef.current = onSessionUpdate; }, [onSessionUpdate]);
-
-  const [modelLoading, setModelLoading] = useState(false);
+  const [showPopup, setShowPopup] = useState(false);
+  const [restTimer, setRestTimer] = useState(0);
   const [cameraError, setCameraError] = useState(null);
   const [liveMetrics, setLiveMetrics] = useState({});
   const [metricStatus, setMetricStatus] = useState({});
   const [liveIssues, setLiveIssues] = useState([]);
-  const [progress, setProgress] = useState({
-    reps: 0,
-    currentSetReps: 0,
-    setsCompleted: 0,
-  });
+  const [progress, setProgress] = useState({ reps: 0, currentSetReps: 0, setsCompleted: 0 });
+  const [durationSec, setDurationSec] = useState(0);
+  const [calories, setCalories] = useState(0);
+  const [accuracy, setAccuracy] = useState(100);
 
-  // Reset live telemetry when a new session starts.
+  useEffect(() => {
+    onSessionUpdateRef.current = onSessionUpdate;
+  }, [onSessionUpdate]);
+
   useEffect(() => {
     if (active) {
       setLiveMetrics({});
@@ -83,13 +99,52 @@ export default function WorkoutPanel({
       setLiveIssues([]);
       setProgress({ reps: 0, currentSetReps: 0, setsCompleted: 0 });
       setCameraError(null);
+      setShowPopup(false);
+      setRestTimer(0);
+      setDurationSec(0);
+      setCalories(0);
+      setAccuracy(100);
     }
-  }, [active]);
+  }, [active, exercise?.id, targetReps, targetSets]);
 
-  // Browser-side MediaPipe + WebRTC pipeline.
   useEffect(() => {
-    if (!active) {
+    if (restTimer <= 0) return;
+    const timerId = setTimeout(() => setRestTimer((t) => t - 1), 1000);
+    return () => clearTimeout(timerId);
+  }, [restTimer]);
+
+  useEffect(() => {
+    if (!active || showPopup) return;
+    const id = setInterval(() => {
+      setDurationSec((t) => t + 1);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [active, showPopup]);
+
+  useEffect(() => {
+    if (!exercise) return;
+    const met = METS[exercise.id] ?? 4.0;
+    const weightKg = 75;
+    const hours = durationSec / 3600;
+    const base = met * weightKg * hours;
+    const repBonus = progress.reps * 0.02;
+    let total = base + repBonus;
+    if (!Number.isFinite(total)) total = 0;
+    if (total > 800) total = 800;
+    setCalories(total);
+  }, [durationSec, progress.reps, exercise]);
+
+  useEffect(() => {
+    if (!active || showPopup || restTimer > 0) {
       runningRef.current = false;
+      const v = videoRef.current;
+      const c = canvasRef.current;
+      if (c) {
+        const ctx = c.getContext('2d');
+        if (ctx) {
+          // ctx.clearRect(0, 0, c.width, c.height);
+        }
+      }
       return;
     }
 
@@ -97,26 +152,17 @@ export default function WorkoutPanel({
     let stream = null;
     let raf = null;
 
-    // Use refs to persist PoseLandmarker and detector instances
-    const poseRef = { current: null };
-    const detectorRef = { current: null };
-
-    setModelLoading(true);
     setCameraError(null);
 
     async function setup() {
       try {
-        const [{ PoseLandmarker, FilesetResolver }, mediaStream] =
-          await Promise.all([
-            import('@mediapipe/tasks-vision'),
-            navigator.mediaDevices.getUserMedia({
-              video: {
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                facingMode: 'user',
-              },
-            }),
-          ]);
+        const mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: 'user',
+          },
+        });
 
         if (cancelled) {
           mediaStream.getTracks().forEach((t) => t.stop());
@@ -130,13 +176,24 @@ export default function WorkoutPanel({
           await video.play();
         }
 
-        const vision = await FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
-        );
+        if (!poseLandmarkerRef.current) {
+          const visionModule = await import('@mediapipe/tasks-vision');
+          if (cancelled) {
+            mediaStream.getTracks().forEach((t) => t.stop());
+            return;
+          }
 
-        // Initialize PoseLandmarker only once
-        if (!poseRef.current) {
-          poseRef.current = await PoseLandmarker.createFromOptions(vision, {
+          const { PoseLandmarker, FilesetResolver } = visionModule;
+
+          const vision = await FilesetResolver.forVisionTasks(
+            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
+          );
+          if (cancelled) {
+            mediaStream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+
+          poseLandmarkerRef.current = await PoseLandmarker.createFromOptions(vision, {
             baseOptions: {
               modelAssetPath:
                 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
@@ -147,41 +204,82 @@ export default function WorkoutPanel({
           });
         }
 
-        // Initialize detector only once per exercise and targetReps
-        if (!detectorRef.current || detectorRef.current.exerciseId !== exercise.id || detectorRef.current.targetReps !== targetReps) {
-          detectorRef.current = createDetector(exercise, targetReps);
-          detectorRef.current.exerciseId = exercise.id;
-          detectorRef.current.targetReps = targetReps;
+        if (
+          !detectorRef.current ||
+          detectorRef.current.name !== exercise.id ||
+          detectorRef.current.targetReps !== targetReps ||
+          detectorRef.current.targetSets !== targetSets
+        ) {
+          detectorRef.current = createDetector(exercise, targetReps, targetSets);
         }
 
         if (cancelled) return;
-        setModelLoading(false);
 
         runningRef.current = true;
 
-        const loop = async () => {
-          if (!runningRef.current) return;
+        const loop = () => {
+          if (!runningRef.current || cancelled) return;
+
           const v = videoRef.current;
           const c = canvasRef.current;
+          const pose = poseLandmarkerRef.current;
 
-          if (v && c && v.readyState >= 2) {
+          if (v && c && pose && v.readyState >= 2) {
             if (c.width !== v.videoWidth || c.height !== v.videoHeight) {
               c.width = v.videoWidth;
               c.height = v.videoHeight;
             }
 
-            const results = await poseRef.current.detectForVideo(v, performance.now());
+            const nowTs = performance.now();
+            const results = pose.detectForVideo(v, nowTs);
+            const landmarks = results?.landmarks?.[0];
 
             const ctx = c.getContext('2d');
             ctx.clearRect(0, 0, c.width, c.height);
 
-            if (results.landmarks?.[0]) {
-              const out = detectorRef.current.process(results.landmarks[0]);
+            if (landmarks && detectorRef.current) {
+              const out = detectorRef.current.process(landmarks);
+
               if (out.metrics) {
                 setLiveMetrics(out.metrics);
+
                 const { issues, metricStatus: status } = analyzeForm(exercise.id, out.metrics);
                 setLiveIssues(issues);
                 setMetricStatus(status);
+
+                const severities = Object.values(status || {});
+                const badCount = severities.filter((s) => s === SEVERITY.BAD).length;
+                const warnCount = severities.filter((s) => s === SEVERITY.WARN).length;
+                const frameAccRaw = Math.max(0, 100 - badCount * 25 - warnCount * 10);
+                setAccuracy((prev) => {
+                  if (!Number.isFinite(prev)) return frameAccRaw;
+                  const smoothed = prev * 0.8 + frameAccRaw * 0.2;
+                  return Math.max(0, Math.min(100, smoothed));
+                });
+
+                // Strict check: Popup sirf tab aaye jab target sets aur total reps dono mathematically pure ho jayein
+                const totalTargetReps = targetSets * targetReps;
+                if (out.setsCompleted >= targetSets || (out.repCount >= totalTargetReps)) {
+                  setShowPopup(true);
+                  runningRef.current = false;
+                  return;
+                }
+
+                // Per-set rest timer: pause tracking between sets.
+                if (
+                  out.currentSetReps >= targetReps &&
+                  out.setsCompleted < targetSets &&
+                  restTimer === 0
+                ) {
+                  setRestTimer(10);
+                  setProgress((prev) => ({
+                    ...prev,
+                    setsCompleted: prev.setsCompleted + 1,
+                    currentSetReps: 0,
+                  }));
+                  return;
+                }
+
                 setProgress({
                   reps: out.repCount,
                   currentSetReps: out.currentSetReps,
@@ -199,8 +297,19 @@ export default function WorkoutPanel({
                     formIssues: issues,
                   });
                 }
+              } else {
+                setLiveMetrics({});
+                setMetricStatus({});
+                setLiveIssues([]);
               }
-              drawPose(c, results.landmarks[0]);
+
+              drawPose(c, landmarks);
+            } else if (landmarks) {
+              drawPose(c, landmarks);
+            } else {
+              setLiveMetrics({});
+              setMetricStatus({});
+              setLiveIssues([]);
             }
           }
 
@@ -211,11 +320,10 @@ export default function WorkoutPanel({
       } catch (err) {
         console.error('[pose] setup failed:', err);
         setCameraError(
-          err.name === 'NotAllowedError'
+          err?.name === 'NotAllowedError'
             ? 'Camera permission denied. Please allow camera access and try again.'
             : 'Camera or MediaPipe failed to start. Check your browser permissions.'
         );
-        setModelLoading(false);
       }
     }
 
@@ -227,7 +335,7 @@ export default function WorkoutPanel({
       if (raf) cancelAnimationFrame(raf);
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
-  }, [active, exercise, targetReps]);
+  }, [active, exercise, targetReps, targetSets, restTimer, showPopup]);
 
   const renderExerciseMetrics = () => {
     const spec = FORM_RULES[exercise.id];
@@ -248,18 +356,16 @@ export default function WorkoutPanel({
         {liveIssues.length > 0 && (
           <div className="mt-2 flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-            {liveIssues[0]}
+            {liveIssues[0] || 'Key points not visible. Please keep your joints in the camera view!'}
           </div>
         )}
       </div>
     );
   };
 
-  // ---------------- STATE A: STANDBY ----------------
   if (!active) {
     return (
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-        {/* Left Standby Selection Panel */}
         <div className="flex h-[560px] flex-col gap-3 overflow-y-auto pr-2 rounded-2xl bg-[#0e1117] p-4 border border-white/10 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-amber-500/40">
           <div className="flex items-center gap-2 py-1 text-amber-400">
             <Dumbbell size={16} />
@@ -293,7 +399,6 @@ export default function WorkoutPanel({
             })}
           </div>
 
-          {/* Steppers */}
           <div className="flex flex-col gap-3 mt-1">
             <div className="flex flex-col gap-2 rounded-xl bg-[#121620] p-3.5 border border-white/5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">TARGET SETS</span>
@@ -302,11 +407,11 @@ export default function WorkoutPanel({
                   onClick={() => setTargetSets && setTargetSets(Math.max(1, targetSets - 1))}
                   className="flex h-8 w-9 items-center justify-center rounded-lg bg-[#1c2230] text-lg font-bold text-gray-300 hover:bg-white/10 hover:text-white transition active:scale-95"
                 >
-                  15
+                  -
                 </button>
                 <span className="text-lg font-extrabold text-amber-400 tabular-nums">{targetSets}</span>
                 <button
-                  onClick={() => setTargetSets && setTargetSets(Math.min(20, targetSets + 1))}
+                  onClick={() => setTargetSets && setTargetSets(prev => prev + 1)}
                   className="flex h-8 w-9 items-center justify-center rounded-lg bg-[#1c2230] text-lg font-bold text-gray-300 hover:bg-white/10 hover:text-white transition active:scale-95"
                 >
                   +
@@ -321,7 +426,7 @@ export default function WorkoutPanel({
                   onClick={() => setTargetReps && setTargetReps(Math.max(1, targetReps - 1))}
                   className="flex h-8 w-9 items-center justify-center rounded-lg bg-[#1c2230] text-lg font-bold text-gray-300 hover:bg-white/10 hover:text-white transition active:scale-95"
                 >
-                  15
+                  -
                 </button>
                 <span className="text-lg font-extrabold text-amber-400 tabular-nums">{targetReps}</span>
                 <button
@@ -342,7 +447,6 @@ export default function WorkoutPanel({
           </button>
         </div>
 
-        {/* Right Standby Box */}
         <div className="space-y-6">
           <div className="flex flex-col rounded-2xl border border-white/10 bg-[#0e1117] p-6">
             <div className="mb-4">
@@ -355,7 +459,7 @@ export default function WorkoutPanel({
                 <Dumbbell size={28} />
               </span>
               <h4 className="text-base font-bold text-white flex items-center gap-2 justify-center">
-                <span></span> Set your workout plan
+                <span>ⅠⅠ</span> Set your workout plan
               </h4>
               <p className="mt-2 max-w-md text-xs text-gray-400 leading-relaxed">
                 Choose your exercise, sets and reps in the left panel,
@@ -365,12 +469,11 @@ export default function WorkoutPanel({
             </div>
           </div>
 
-          {/* Recent Workout History */}
           <section>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-bold text-white tracking-wider uppercase">RECENT WORKOUT HISTORY</h2>
               <button onClick={onViewHistoryAll} className="text-xs font-medium text-amber-400 hover:underline">
-                View Full Log 12
+                View Full Log →
               </button>
             </div>
             <HistoryTable rows={history} compact />
@@ -380,11 +483,9 @@ export default function WorkoutPanel({
     );
   }
 
-  // ---------------- STATE B: ACTIVE SESSION ----------------
   return (
     <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-      {/* Active Left Sidebar */}
-      <div className="flex h-[580px] flex-col gap-3 overflow-y-auto pr-2 rounded-2xl bg-[#0e1117] p-4 border border-white/10 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-amber-500/40]">
+      <div className="flex h-[580px] flex-col gap-3 overflow-y-auto pr-2 rounded-2xl bg-[#0e1117] p-4 border border-white/10 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-amber-500/40">
         <div className="flex items-center gap-2 py-1 text-amber-400">
           <Activity size={16} />
           <h2 className="text-xs font-black tracking-widest text-amber-400 uppercase">ACTIVE SESSION</h2>
@@ -393,7 +494,7 @@ export default function WorkoutPanel({
         <div className="rounded-xl bg-[#181d28] p-4 border border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
           <span className="text-[10px] font-extrabold tracking-widest text-amber-400 uppercase">ACTIVE ROUTINE</span>
           <p className="text-lg font-black text-white mt-1">{exercise?.name || 'Squats'}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{targetSets} Sets Target 12 {targetReps} Reps / Set</p>
+          <p className="text-xs text-gray-400 mt-0.5">{targetSets} Sets Target → {targetReps} Reps / Set</p>
         </div>
 
         <button
@@ -408,12 +509,20 @@ export default function WorkoutPanel({
           <MetricCard label="Total Reps" value={progress.reps} />
           <MetricCard label="Current Set Reps" value={`${progress.currentSetReps} / ${targetReps}`} />
           <MetricCard label="Sets Completed" value={`${progress.setsCompleted} / ${targetSets}`} />
+          <MetricCard label="Duration" value={formatDuration(durationSec)} />
+          <MetricCard label="Calories" value={`${calories.toFixed(1)} kcal`} />
+          <MetricCard label="Form Accuracy" value={`${Math.round(accuracy)}%`} />
         </div>
 
         {renderExerciseMetrics()}
+
+        {cameraError && (
+          <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-200">
+            {cameraError}
+          </div>
+        )}
       </div>
 
-      {/* Active Right Panel 12 Live camera + canvas overlay */}
       <div className="flex flex-col rounded-2xl border border-white/10 bg-[#0e1117] p-6 h-[580px]">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -438,26 +547,30 @@ export default function WorkoutPanel({
             ref={canvasRef}
             className="absolute inset-0 h-full w-full object-contain -scale-x-100 pointer-events-none"
           />
-
-          
-
-          
-        </div>
-
-        <div className="flex items-center justify-between pt-4 border-t border-white/5 mt-2">
-          <p className="text-xs text-gray-500">
-            {cameraError
-              ? 'Tracking paused'
-              : modelLoading
-              ? 'Initializing camera and pose model06'
-              : 'Camera active 12 MediaPipe pose tracking running locally'}
-          </p>
-          <div className="flex items-center gap-2 text-xs text-gray-400">
-            <span>SELECT DEVICE:</span>
-            <select className="rounded-lg bg-[#161b22] px-3 py-1.5 text-white border border-white/10 focus:outline-none">
-              <option>Default Camera</option>
-            </select>
-          </div>
+          {restTimer > 0 && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-6xl font-extrabold text-amber-400">
+              Rest: {restTimer}s
+            </div>
+          )}
+          {showPopup && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-6 rounded-2xl text-center z-20">
+              <h2 className="text-4xl font-extrabold text-amber-400 mb-6">Target Completed! Great Job!</h2>
+              <p className="text-lg font-semibold text-white mb-2">Workout Summary</p>
+              <p className="text-white mb-1">Total Reps: {progress.reps}</p>
+              <p className="text-white mb-1">Sets Completed: {progress.setsCompleted} / {targetSets}</p>
+              <p className="text-white mb-1">Duration: {formatDuration(durationSec)}</p>
+              <p className="text-white mb-4">Calories: {calories.toFixed(1)} kcal</p>
+              <button
+                className="mt-2 rounded-xl bg-amber-500 py-3 px-6 font-bold text-black shadow-lg hover:bg-amber-400 cursor-pointer"
+                onClick={() => {
+                  setShowPopup(false);
+                  if (onEndWorkout) onEndWorkout();
+                }}
+              >
+                Close
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
