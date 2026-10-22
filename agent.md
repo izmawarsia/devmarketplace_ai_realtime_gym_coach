@@ -73,64 +73,62 @@ $$\theta = \arccos\left(\max\left(-1.0, \min\left(1.0, \frac{\mathbf{a} \cdot \m
 3. Configure the DevMarketplace Built-in Database to save workout sessions (`user_id`, `exercise_name`, `reps`, `sets`, `time`, `timestamp`).
 4. Render persistent workout history in a clean data table component.
 
-# Phase 5: Client-Side MediaPipe WASM & Exercise Detectors Migration
+# Phase 5: Client-Side MediaPipe WASM, Canvas Skeleton Drawing & Exercise Detectors Migration
 
 ## 1. Architecture Workflow (Browser-Side Processing)
-This phase shifts the application from Streamlit WebRTC to pure client-side browser processing to achieve zero latency and high performance[cite: 22]:
+This phase shifts the application from Streamlit WebRTC to pure client-side browser processing to achieve zero latency and high performance:
 - **User Webcam**: The browser accesses the webcam stream directly using `navigator.mediaDevices.getUserMedia`.
 - **HTML5 Video Element**: The stream is played within a hidden or visible video element.
-- **MediaPipe WASM (In-Browser)**: The MediaPipe Pose model runs locally within the browser to analyze each frame.
-- **33 Pose Landmarks Object**: 33 keypoints (joint coordinates and visibility) are extracted from the model[cite: 22].
-- **HTML5 Canvas**: Skeleton overlays and joint angles are drawn directly onto the canvas[cite: 22].
+- **MediaPipe WASM (In-Browser)**: The MediaPipe Pose model runs locally within the browser in the background (no visible loading screen on video feed).
+- **33 Pose Landmarks Object**: 33 keypoints (joint coordinates and visibility) are extracted from the model.
+- **HTML5 Canvas**: Skeleton overlays and joint angles are drawn directly onto the canvas.
 
-## 2. Core Base Exercise Class
-**File Path:** `src/core/base_exercise.js`
+## 2. Skeleton Overlay & Canvas Drawing (`src/core/drawing.js`)
+- **Connected Skeleton Lines**: Do NOT draw only isolated joint dots. Use MediaPipe's `POSE_CONNECTIONS` to draw thick, bright, connected skeleton lines between keypoints (shoulders, elbows, wrists, hips, knees, ankles) using `ctx.stroke()`.
+- Synchronize canvas clearing and drawing smoothly with the live camera frames using `requestAnimationFrame`.
 
-- **Instructions:**
-  - Port the Python `BaseExercise` abstract class into JavaScript (ES6 class).
-  - Implement the `calculate_angle(a, b, c)` method using vector dot products and `Math.acos` to compute the angle between three points (A, B, C) in degrees.
-  - Create the `get_point(landmarks, idx)` method to return `(x, y)` coordinates from a landmark index.
-  - Keep `process(landmarks)` and `reset()` methods as abstract/placeholders to be overridden by child classes.
+## 3. Core Base Exercise Class (`src/core/base_exercise.js`)
+- Implement `calculate_angle(a, b, c)` using vector dot products and `Math.acos`.
+- Create `get_point(landmarks, idx)` to extract `(x, y)` coordinates.
+- Abstract methods: `process(landmarks)` and `reset()`.
 
-## 3. Exercise Detectors Implementation
-All detectors must be built as JavaScript classes inside the `src/detectors/` folder:
+## 4. Exercise Detectors Implementation (`src/detectors/`)
+All 5 exercises must feature strict state machines, proper thresholds, and dynamic form accuracy:
 
-### A. Squat Detector
-**File Path:** `src/detectors/squat.js`
-- **Logic:** Calculate left/right hip, knee, and ankle angles. If the knee angle is `< 100`, the stage becomes `"down"`. When the angle goes `>= 160` while the stage is `"down"`, increment the rep count by `+1`. Return the depth status (`GOOD DEPTH`, `TOO HIGH`, `STANDING`).
+### A. Squat Detector (`src/detectors/squat.js`)
+- Knee angle: `< 100` = `"down"`, `>= 160` = `"up"` (Increments rep count).
+- Track depth status (`GOOD DEPTH`, `TOO HIGH`, `STANDING`).
 
-### B. Biceps Curl Detector
-**File Path:** `src/detectors/biceps_curl.js`
-- **Logic:** Calculate the elbow angle between the shoulder, elbow, and wrist. Thresholds: UP `< 50`, DOWN `> 160`. Also port the logic to check elbow drift and torso swing status (`NO SWING` / `SWINGING`).
+### B. Biceps Curl Detector (`src/detectors/biceps_curl.js`)
+- Elbow angle: `< 50` = `"up"`, `> 160` = `"down"`.
+- Track torso swing and elbow drift.
 
-### C. Lunges Detector
-**File Path:** `src/detectors/lunges.js`
-- **Logic:** Calculate the front knee angle (`DOWN_THRESHOLD = 100`, `UP_THRESHOLD = 160`). Calculate the torso angle and return the balance status (`BALANCED` / `OFF BALANCE`).
+### C. Lunges Detector (`src/detectors/lunges.js`)
+- Front knee angle: `DOWN = 100`, `UP = 160`. Track balance status.
 
-### D. Push-up Detector
-**File Path:** `src/detectors/pushup.js`
-- **Logic:** Calculate the elbow angle (`DOWN = 90`, `UP = 160`) and body alignment angle. Track the hip sag status (`LEVEL`, `SAGGING`, `PIKED UP`).
+### D. Push-up Detector (`src/detectors/pushup.js`)
+- Elbow angle: `DOWN = 90`, `UP = 160`. Track hip sag alignment.
 
-### E. Shoulder Press Detector
-**File Path:** `src/detectors/shoulder_press.js`
-- **Logic:** Calculate the elbow angle (`UP = 160`, `DOWN = 90`) and back arch status (`Neutral`, `Slight Arch`, `Excessive Arch`).
+### E. Shoulder Press Detector (`src/detectors/shoulder_press.js`)
+- Elbow angle: `UP = 160`, `DOWN = 90`. Track back arch.
 
+## 5. UI Integration, Set Progression & Metrics (`src/components/WorkoutPanel.jsx`)
 
-## 4. UI & Video Integration Component
-**File Path:** `src/components/WorkoutPanel.jsx`
+### A. Set Progression & Rest Timer
+- Initial State: `Sets Completed` starts at `0 / Target Sets` (e.g., `0/3`).
+- When `Current Set Reps` reaches the target (e.g., `10/10`):
+  1. Trigger a **10-second rest timer** countdown on screen.
+  2. After 10 seconds complete, increment `Sets Completed` by 1 (e.g., `1/3`) and reset `Current Set Reps` to `0`.
+- **Target Completed Popup**: When `Sets Completed` reaches the final target (e.g., `3/3`), show a prominent **"Target Completed! Great Job!"** popup modal directly in the center of the UI and stop accepting new reps.
 
-- **Instructions:**
-  - When the user clicks the **START WORKOUT** button, render the HTML5 `<video>` and `<canvas>` elements in the right panel.
-  - Initialize the live camera feed by calling the browser's `navigator.mediaDevices.getUserMedia`.
-  - Initialize the MediaPipe Pose model and run the active exercise detector class's `process(landmarks)` method on every frame via a `requestAnimationFrame` loop.
-  - Update real-time values returned by the detectors (such as total reps, current set reps, knee angle, depth status) in the state and render them dynamically onto the left panel's metric cards.
+### B. Live Metrics & Analytics
+- **Calories Burned**: Dynamically compute calories burned based on exercise MET value, user duration, and completed reps.
+- **Exercise Duration**: Display live workout duration timer (e.g., how long the user has been performing squats/biceps curls).
+- **Dynamic Accuracy (No Hardcoding)**: Do NOT hardcode accuracy to 100%. Calculate dynamic accuracy percentage based on rep form quality, smooth angle ranges, and form warning deductions.
 
-## Code Gig Deliverables (DevMarketplace Requirement)
-
-The agent must produce two modular, reusable code modules:
-
-1. **`reusable-auth-module`**: Standalone React hook/component for user sign-in and session state management.
-2. **`ai-workout-coaching-service`**: Modular JS library connecting MediaPipe Pose events to Groq LLM API and Web Speech TTS.
+## 6. Code Deliverables
+1. `reusable-auth-module`: Standalone React hook/component for sign-in and session state.
+2. `ai-workout-coaching-service`: JS library connecting MediaPipe Pose events to Groq LLM API and Web Speech TTS.
 
 ## 5. Runtime Stability & Performance Directives (Active Execution Notes)
 - **Single Model Initialization:** Initialize the MediaPipe `PoseLandmarker` strictly once using a persistent reference (`poseLandmarkerRef`) to prevent continuous re-loading loops or "Loading MediaPipe Pipeline" UI flickers on frames/movement.
