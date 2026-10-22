@@ -69,14 +69,14 @@ export default function WorkoutConfig({
       {active ? (
         <button
           onClick={onStop}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-red-500/90 py-3 text-sm font-semibold text-white transition hover:bg-red-500"
+          className="btn-amber mt-4 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold"
         >
           <Square size={16} /> End Workout
         </button>
       ) : (
         <button
           onClick={onStart}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-3 text-sm font-semibold text-black transition hover:bg-amber-400"
+          className="btn-amber mt-4 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold"
         >
           <Play size={16} /> Start Workout
         </button>
