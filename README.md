@@ -102,3 +102,18 @@ from workspace Secrets, so the app runs there without a local `.env` file.
   `.png`/`.jpg` and update `CARDS` in `Gallery.jsx`).
 - Demo section embeds `public/videos/video.mp4` (click-to-play, falls back
   to a "coming soon" overlay if the file is absent — add the video there).
+
+### Strict auth flow (Sign Up OTP + login 2FA)
+
+- **Sign Up:** `signUp({ email, password, options: { data: { username } } })`
+  → 6-digit OTP screen (auto-focused, centered code input) →
+  `verifyOtp({ type: 'signup' })` → upsert `(id, username, email)` into
+  `public.users` → `signOut()` → back to Sign In with
+  "Email confirmed successfully! Please sign in with your credentials."
+- **Sign In:** `signInWithPassword` → immediately `signInWithOtp({ email })`
+  → 2FA code screen → `verifyOtp({ type: 'email' })` → dashboard.
+- **Route safety:** `useAuth` marks a `apna_2fa_pending` flag in
+  `sessionStorage` between password success and OTP verification; while the
+  flag is set the session is treated as unauthenticated so the dashboard and
+  other protected views stay blocked until the code is verified. Cancelling
+  the 2FA screen signs the user out and clears the flag.

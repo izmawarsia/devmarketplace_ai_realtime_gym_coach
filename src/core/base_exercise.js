@@ -1,7 +1,6 @@
 /**
  * Shared rep state machine for all exercise detectors.
- * A rep is counted only after reaching the exercise's down phase and returning
- * to the up phase. Counting freezes when the requested sets are complete.
+ * Enhanced with landmark smoothing and OpenCV-parity math stability.
  */
 export class BaseExercise {
   constructor(name, options = {}) {
@@ -10,13 +9,14 @@ export class BaseExercise {
     this.downAngle = options.downAngle ?? 90;
     this.targetReps = Math.max(1, Number(options.targetReps ?? 10));
     this.targetSets = Math.max(1, Number(options.targetSets ?? 3));
-    this.windowSize = options.windowSize ?? 5;
-    this.visibilityThreshold = options.visibilityThreshold ?? 0.5;
+    this.windowSize = options.windowSize ?? 7; // Increased window size for smoother reading
+    this.visibilityThreshold = options.visibilityThreshold ?? 0.5; // OpenCV aligned
     this.state = 'up';
     this.repCount = 0;
     this.currentSetReps = 0;
     this.setsCompleted = 0;
     this.metricHistory = {};
+    this.smoothedPoints = {};
   }
 
   get isComplete() {
@@ -29,25 +29,49 @@ export class BaseExercise {
     this.currentSetReps = 0;
     this.setsCompleted = 0;
     this.metricHistory = {};
+    this.smoothedPoints = {};
   }
 
   getPoint(landmarks, idx) {
     const lm = landmarks?.[idx];
     if (!lm) return { x: 0, y: 0, visibility: 0 };
-    return { x: lm.x ?? 0, y: lm.y ?? 0, visibility: lm.visibility ?? 1 };
+    
+    const rawVis = lm.visibility ?? 1;
+    if (rawVis < this.visibilityThreshold) {
+      return { x: lm.x ?? 0, y: lm.y ?? 0, visibility: rawVis };
+    }
+
+    // Exponential Moving Average (EMA) for coordinate smoothing
+    const alpha = 0.6; // Higher value = faster response, Lower value = smoother movement
+    const prev = this.smoothedPoints[idx];
+    
+    let x = lm.x ?? 0;
+    let y = lm.y ?? 0;
+
+    if (prev) {
+      x = alpha * x + (1 - alpha) * prev.x;
+      y = alpha * y + (1 - alpha) * prev.y;
+    }
+
+    this.smoothedPoints[idx] = { x, y, visibility: rawVis };
+    return this.smoothedPoints[idx];
   }
 
   visible(point, threshold = this.visibilityThreshold) {
-    return point.visibility >= threshold;
+    return point && point.visibility >= threshold;
   }
 
   calculateAngle(a, b, c) {
+    if (!a || !b || !c) return 0;
     const ba = { x: a.x - b.x, y: a.y - b.y };
     const bc = { x: c.x - b.x, y: c.y - b.y };
+    
     const dot = ba.x * bc.x + ba.y * bc.y;
     const magBA = Math.hypot(ba.x, ba.y);
     const magBC = Math.hypot(bc.x, bc.y);
-    if (!magBA || !magBC) return 0;
+    
+    if (!magBA || !magBC) return 0.0;
+    
     const cos = Math.max(-1, Math.min(1, dot / (magBA * magBC)));
     return Math.acos(cos) * (180 / Math.PI);
   }
@@ -94,9 +118,11 @@ export class BaseExercise {
     const extracted = this.extractMetrics(landmarks);
     if (!extracted) {
       return {
-        metrics: null, repCount: this.repCount,
+        metrics: null, 
+        repCount: this.repCount,
         currentSetReps: this.currentSetReps,
-        setsCompleted: this.setsCompleted, isComplete: this.isComplete,
+        setsCompleted: this.setsCompleted, 
+        isComplete: this.isComplete,
       };
     }
     this.updateState(extracted.phaseAngle);

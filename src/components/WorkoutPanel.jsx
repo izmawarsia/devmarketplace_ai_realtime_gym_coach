@@ -35,7 +35,7 @@ function formatMetric(exerciseId, key, metrics) {
   const spec = FORM_RULES[exerciseId];
   const metric = spec?.metrics.find((m) => m.key === key);
   const raw = metrics?.[key];
-  if (raw == null) return metric?.unit === '6' ? '06' : 'N/A';
+  if (raw == null) return metric?.unit === '°' ? '0°' : 'N/A';
   if (typeof raw === 'number') return `${raw}${metric?.unit ?? ''}`;
   return String(raw);
 }
@@ -61,7 +61,6 @@ export default function WorkoutPanel({
   const lastLiftRef = useRef(0);
   const onSessionUpdateRef = useRef(onSessionUpdate);
 
-  // Keep the latest callback without restarting the camera/model effect on every parent render.
   useEffect(() => { onSessionUpdateRef.current = onSessionUpdate; }, [onSessionUpdate]);
 
   const [modelLoading, setModelLoading] = useState(false);
@@ -75,7 +74,6 @@ export default function WorkoutPanel({
     setsCompleted: 0,
   });
 
-  // Reset live telemetry when a new session starts.
   useEffect(() => {
     if (active) {
       setLiveMetrics({});
@@ -86,7 +84,6 @@ export default function WorkoutPanel({
     }
   }, [active]);
 
-  // Browser-side MediaPipe + WebRTC pipeline.
   useEffect(() => {
     if (!active) {
       runningRef.current = false;
@@ -97,7 +94,6 @@ export default function WorkoutPanel({
     let stream = null;
     let raf = null;
 
-    // Use refs to persist PoseLandmarker and detector instances
     const poseRef = { current: null };
     const detectorRef = { current: null };
 
@@ -134,20 +130,22 @@ export default function WorkoutPanel({
           'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
         );
 
-        // Initialize PoseLandmarker only once
+        // High Accuracy Full Pose Model & Strict Confidence Thresholds
         if (!poseRef.current) {
           poseRef.current = await PoseLandmarker.createFromOptions(vision, {
             baseOptions: {
               modelAssetPath:
-                'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
+                'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task',
               delegate: 'GPU',
             },
             runningMode: 'VIDEO',
             numPoses: 1,
+            minPoseDetectionConfidence: 0.7, // High accuracy detection cutoff
+            minPosePresenceConfidence: 0.7,  // Strict body presence check
+            minTrackingConfidence: 0.7,      // Jitter prevention
           });
         }
 
-        // Initialize detector only once per exercise and targetReps
         if (!detectorRef.current || detectorRef.current.exerciseId !== exercise.id || detectorRef.current.targetReps !== targetReps) {
           detectorRef.current = createDetector(exercise, targetReps);
           detectorRef.current.exerciseId = exercise.id;
@@ -255,11 +253,9 @@ export default function WorkoutPanel({
     );
   };
 
-  // ---------------- STATE A: STANDBY ----------------
   if (!active) {
     return (
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-        {/* Left Standby Selection Panel */}
         <div className="flex h-[560px] flex-col gap-3 overflow-y-auto pr-2 rounded-2xl bg-[#0e1117] p-4 border border-white/10 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-amber-500/40">
           <div className="flex items-center gap-2 py-1 text-amber-400">
             <Dumbbell size={16} />
@@ -293,7 +289,6 @@ export default function WorkoutPanel({
             })}
           </div>
 
-          {/* Steppers */}
           <div className="flex flex-col gap-3 mt-1">
             <div className="flex flex-col gap-2 rounded-xl bg-[#121620] p-3.5 border border-white/5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">TARGET SETS</span>
@@ -302,7 +297,7 @@ export default function WorkoutPanel({
                   onClick={() => setTargetSets && setTargetSets(Math.max(1, targetSets - 1))}
                   className="flex h-8 w-9 items-center justify-center rounded-lg bg-[#1c2230] text-lg font-bold text-gray-300 hover:bg-white/10 hover:text-white transition active:scale-95"
                 >
-                  15
+                  -
                 </button>
                 <span className="text-lg font-extrabold text-amber-400 tabular-nums">{targetSets}</span>
                 <button
@@ -321,7 +316,7 @@ export default function WorkoutPanel({
                   onClick={() => setTargetReps && setTargetReps(Math.max(1, targetReps - 1))}
                   className="flex h-8 w-9 items-center justify-center rounded-lg bg-[#1c2230] text-lg font-bold text-gray-300 hover:bg-white/10 hover:text-white transition active:scale-95"
                 >
-                  15
+                  -
                 </button>
                 <span className="text-lg font-extrabold text-amber-400 tabular-nums">{targetReps}</span>
                 <button
@@ -342,7 +337,6 @@ export default function WorkoutPanel({
           </button>
         </div>
 
-        {/* Right Standby Box */}
         <div className="space-y-6">
           <div className="flex flex-col rounded-2xl border border-white/10 bg-[#0e1117] p-6">
             <div className="mb-4">
@@ -355,7 +349,7 @@ export default function WorkoutPanel({
                 <Dumbbell size={28} />
               </span>
               <h4 className="text-base font-bold text-white flex items-center gap-2 justify-center">
-                <span></span> Set your workout plan
+                Set your workout plan
               </h4>
               <p className="mt-2 max-w-md text-xs text-gray-400 leading-relaxed">
                 Choose your exercise, sets and reps in the left panel,
@@ -365,12 +359,11 @@ export default function WorkoutPanel({
             </div>
           </div>
 
-          {/* Recent Workout History */}
           <section>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-bold text-white tracking-wider uppercase">RECENT WORKOUT HISTORY</h2>
               <button onClick={onViewHistoryAll} className="text-xs font-medium text-amber-400 hover:underline">
-                View Full Log 12
+                View Full Log
               </button>
             </div>
             <HistoryTable rows={history} compact />
@@ -380,11 +373,9 @@ export default function WorkoutPanel({
     );
   }
 
-  // ---------------- STATE B: ACTIVE SESSION ----------------
   return (
     <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-      {/* Active Left Sidebar */}
-      <div className="flex h-[580px] flex-col gap-3 overflow-y-auto pr-2 rounded-2xl bg-[#0e1117] p-4 border border-white/10 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-amber-500/40]">
+      <div className="flex h-[580px] flex-col gap-3 overflow-y-auto pr-2 rounded-2xl bg-[#0e1117] p-4 border border-white/10 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-amber-500/40">
         <div className="flex items-center gap-2 py-1 text-amber-400">
           <Activity size={16} />
           <h2 className="text-xs font-black tracking-widest text-amber-400 uppercase">ACTIVE SESSION</h2>
@@ -393,7 +384,7 @@ export default function WorkoutPanel({
         <div className="rounded-xl bg-[#181d28] p-4 border border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
           <span className="text-[10px] font-extrabold tracking-widest text-amber-400 uppercase">ACTIVE ROUTINE</span>
           <p className="text-lg font-black text-white mt-1">{exercise?.name || 'Squats'}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{targetSets} Sets Target 12 {targetReps} Reps / Set</p>
+          <p className="text-xs text-gray-400 mt-0.5">{targetSets} Sets Target • {targetReps} Reps / Set</p>
         </div>
 
         <button
@@ -413,7 +404,6 @@ export default function WorkoutPanel({
         {renderExerciseMetrics()}
       </div>
 
-      {/* Active Right Panel 12 Live camera + canvas overlay */}
       <div className="flex flex-col rounded-2xl border border-white/10 bg-[#0e1117] p-6 h-[580px]">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -438,10 +428,6 @@ export default function WorkoutPanel({
             ref={canvasRef}
             className="absolute inset-0 h-full w-full object-contain -scale-x-100 pointer-events-none"
           />
-
-          
-
-          
         </div>
 
         <div className="flex items-center justify-between pt-4 border-t border-white/5 mt-2">
@@ -449,8 +435,8 @@ export default function WorkoutPanel({
             {cameraError
               ? 'Tracking paused'
               : modelLoading
-              ? 'Initializing camera and pose model06'
-              : 'Camera active 12 MediaPipe pose tracking running locally'}
+              ? 'Initializing camera and pose model…'
+              : 'Camera active • MediaPipe pose tracking running locally'}
           </p>
           <div className="flex items-center gap-2 text-xs text-gray-400">
             <span>SELECT DEVICE:</span>

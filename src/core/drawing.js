@@ -34,7 +34,8 @@ export function drawPose(canvas, landmarks) {
   const lineWidth = Math.max(3, Math.min(6, scale * 0.012));
   const radius = Math.max(3, Math.min(5, scale * 0.009));
 
-  const visible = (p) => p && (p.visibility == null || p.visibility >= 0.2);
+  // OpenCV style strict visibility threshold (0.5 minimum)
+  const visible = (p) => p && (p.visibility == null || p.visibility >= 0.5);
 
   ctx.save();
   ctx.lineCap = 'round';
@@ -81,5 +82,5 @@ export function drawPose(canvas, landmarks) {
   ctx.restore();
 }
 
-// Export POSE_CONNECTIONS for testing/diagnostics (not used in main app)
+// Export POSE_CONNECTIONS for testing/diagnostics
 export { POSE_CONNECTIONS };

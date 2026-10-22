@@ -29,6 +29,20 @@ async function upsertProfile(user) {
   return supabase.from('users').upsert(profile, { onConflict: 'id' }).select().single();
 }
 
+const PENDING_2FA_KEY = 'apna_2fa_pending';
+
+export function markPending2FA() {
+  try { sessionStorage.setItem(PENDING_2FA_KEY, 'true'); } catch { /* ignore */ }
+}
+
+export function clearPending2FA() {
+  try { sessionStorage.removeItem(PENDING_2FA_KEY); } catch { /* ignore */ }
+}
+
+export function isPending2FA() {
+  try { return sessionStorage.getItem(PENDING_2FA_KEY) === 'true'; } catch { return false; }
+}
+
 export function useAuth() {
   const [state, setState] = useState({ user: null, loading: true, error: null });
   const mountedRef = useRef(true);
@@ -50,6 +64,14 @@ export function useAuth() {
     if (!mountedRef.current) return;
 
     if (!authUser) {
+      setState({ user: null, loading: false, error: null });
+      return;
+    }
+
+    // A password sign-in succeeded but the mandatory email 2FA code has not
+    // been verified yet — treat the session as unauthenticated so protected
+    // routes stay blocked until verifyOtp(type: 'email') succeeds.
+    if (isPending2FA()) {
       setState({ user: null, loading: false, error: null });
       return;
     }
