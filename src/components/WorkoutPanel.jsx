@@ -140,22 +140,25 @@ export default function WorkoutPanel({
   }, [durationSec, progress.reps, exercise]);
 
   // Browser-side MediaPipe + webcam pipeline.
-  useEffect(() => {
-    if (!active || showPopup || restTimer > 0) {
-      runningRef.current = false;
-      // Pause video stream and clear canvas during rest or popup
-      const v = videoRef.current;
-      const c = canvasRef.current;
-      if (c) {
-        const ctx = c.getContext('2d');
-        ctx && // ctx.clearRect(0, 0, c.width, c.height); // removed, handled by drawPose
+ useEffect(() => {
+  if (!active || showPopup || restTimer > 0) {
+    runningRef.current = false;
+    // Pause video stream and clear canvas during rest or popup
+    const v = videoRef.current;
+    const c = canvasRef.current;
+    if (c) {
+      const ctx = c.getContext('2d');
+      if (ctx) {
+        // ctx.clearRect(0, 0, c.width, c.height);
       }
-      if (v && v.srcObject) {
-        // Optionally pause video
-        // v.pause();
-      }
-      return;
+    } 
+    if (v && v.srcObject) {
+      // Optionally pause video
+      // v.pause();
     }
+    return;
+  }
+}, [active, showPopup, restTimer]); 
 
     let cancelled = false;
     let stream = null;
