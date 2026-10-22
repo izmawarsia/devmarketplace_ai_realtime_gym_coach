@@ -148,10 +148,11 @@ export default function WorkoutPanel({
         }
 
         // Initialize detector only once per exercise and targetReps
-        if (!detectorRef.current || detectorRef.current.exerciseId !== exercise.id || detectorRef.current.targetReps !== targetReps) {
-          detectorRef.current = createDetector(exercise, targetReps);
+        if (!detectorRef.current || detectorRef.current.exerciseId !== exercise.id || detectorRef.current.targetReps !== targetReps || detectorRef.current.targetSets !== targetSets) {
+          detectorRef.current = createDetector(exercise, targetReps, targetSets);
           detectorRef.current.exerciseId = exercise.id;
           detectorRef.current.targetReps = targetReps;
+          detectorRef.current.targetSets = targetSets;
         }
 
         if (cancelled) return;
@@ -227,7 +228,7 @@ export default function WorkoutPanel({
       if (raf) cancelAnimationFrame(raf);
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
-  }, [active, exercise, targetReps]);
+  }, [active, exercise, targetReps, targetSets]);
 
   const renderExerciseMetrics = () => {
     const spec = FORM_RULES[exercise.id];
