@@ -50,35 +50,4 @@ export class BicepsCurlDetector extends BaseExercise {
     };
   }
 
-  process(landmarks) {
-    const data = this.extractMetrics(landmarks);
-    if (!data) {
-      // Missing key landmarks, reset stage
-      this.stage = null;
-      return { repCount: this.repCount, currentSetReps: this.currentSetReps, setsCompleted: this.setsCompleted, metrics: null };
-    }
-
-    const { metrics, phaseAngle } = data;
-
-    if (phaseAngle > this.upAngle) {
-      this.stage = 'up';
-    }
-
-    if (phaseAngle < this.downAngle && this.stage === 'up') {
-      this.stage = 'down';
-      this.repCount++;
-      this.currentSetReps++;
-      if (this.currentSetReps >= this.targetReps) {
-        this.currentSetReps = 0;
-        this.setsCompleted++;
-      }
-    }
-
-    return {
-      repCount: this.repCount,
-      currentSetReps: this.currentSetReps,
-      setsCompleted: this.setsCompleted,
-      metrics,
-    };
-  }
 }
