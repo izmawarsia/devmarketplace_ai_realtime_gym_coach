@@ -1,5 +1,7 @@
-// Groq coaching client removed in Phase 5.
-// This file is intentionally a no-op placeholder.
-export async function fetchCoachingMessage() {
-  return { message: '', source: 'none' };
+// Backwards-compatible wrapper around the Groq coaching client.
+import { getCoachCue } from './groqCoach';
+
+export async function fetchCoachingMessage({ exercise, issues } = {}) {
+  const { cue, source } = await getCoachCue({ exercise, issues });
+  return { message: cue, source };
 }

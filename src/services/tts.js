@@ -8,6 +8,7 @@ export function speak(text, { rate = 1.05, pitch = 1.0, volume = 1.0, lang = 'en
   if (!isTTSSupported() || !text) return false;
   try {
     window.speechSynthesis.cancel(); // zero-delay: interrupt anything playing
+    if (window.speechSynthesis.paused) window.speechSynthesis.resume(); // Chrome stuck-paused quirk
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
     utterance.rate = rate;

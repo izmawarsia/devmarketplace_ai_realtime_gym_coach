@@ -14,7 +14,7 @@ export class SquatDetector extends BaseExercise {
     });
     this.DOWN_THRESHOLD = 100;
     this.UP_THRESHOLD = 160;
-    this.MIN_VISIBILITY = 0.7;
+    this.MIN_VISIBILITY = 0.5; // relaxed: grace frames handle transient drops
   }
 
   extractMetrics(landmarks) {
