@@ -7,14 +7,6 @@ import { drawPose } from '../core/drawing';
 import { analyzeForm, FORM_RULES, SEVERITY } from '../analysis/formRules';
 import { createVoicePipeline } from '../services/voicePipeline';
 import { cancelSpeech } from '../services/tts';
-import { createLandmarkSmoother } from '../core/smoothing';
-import { speakCue } from '../coaching/speechService';
-
-function formatDuration(totalSec) {
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
 
 function MetricCard({ label, value, status }) {
   const bad = status === SEVERITY.BAD;
@@ -81,23 +73,11 @@ export default function WorkoutPanel({
   const [liveMetrics, setLiveMetrics] = useState({});
   const [metricStatus, setMetricStatus] = useState({});
   const [liveIssues, setLiveIssues] = useState([]);
-  const [durationSec, setDurationSec] = useState(0);
-  const [formAccuracy, setFormAccuracy] = useState(100);
-  const framesRef = useRef(0);
-  const badFramesRef = useRef(0);
-  const lastCueIssueRef = useRef(null);
   const [progress, setProgress] = useState({
     reps: 0,
     currentSetReps: 0,
     setsCompleted: 0,
   });
-
-  // Live Duration timer (MM:SS) — runs only while tracking is active.
-  useEffect(() => {
-    if (!active || !cameraOn) return;
-    const id = setInterval(() => setDurationSec((s) => s + 1), 1000);
-    return () => clearInterval(id);
-  }, [active, cameraOn]);
 
   useEffect(() => {
     if (active) {
@@ -107,11 +87,6 @@ export default function WorkoutPanel({
       setProgress({ reps: 0, currentSetReps: 0, setsCompleted: 0 });
       setCameraError(null);
       setCoachText(null);
-      setDurationSec(0);
-      setFormAccuracy(100);
-      framesRef.current = 0;
-      badFramesRef.current = 0;
-      lastCueIssueRef.current = null;
       // Camera never auto-starts: user must click "Start Camera".
       setCameraOn(false);
     }
@@ -129,8 +104,6 @@ export default function WorkoutPanel({
 
     const poseRef = { current: null };
     const detectorRef = { current: null };
-    // EMA landmark smoother (alpha 0.7): kills canvas jitter.
-    const smootherRef = { current: createLandmarkSmoother(0.7) };
     const voiceRef = {
       current: createVoicePipeline({
         exerciseId: exercise.id,
@@ -218,33 +191,12 @@ export default function WorkoutPanel({
             ctx.clearRect(0, 0, c.width, c.height);
 
             if (results.landmarks?.[0]) {
-              // Smooth landmarks (EMA alpha 0.7) BEFORE they feed both the
-              // detector state machine and the canvas skeleton drawing.
-              const smoothed = smootherRef.current.apply(results.landmarks[0]);
-
-              const out = detectorRef.current.process(smoothed);
+              const out = detectorRef.current.process(results.landmarks[0]);
               if (out.metrics) {
                 setLiveMetrics(out.metrics);
                 const { issues, metricStatus: status } = analyzeForm(exercise.id, out.metrics);
                 setLiveIssues(issues);
                 setMetricStatus(status);
-
-                // Dynamic Form Accuracy: % of frames without BAD/WARN issues.
-                framesRef.current += 1;
-                if (issues.length > 0) badFramesRef.current += 1;
-                setFormAccuracy(
-                  Math.max(0, Math.round(100 - (badFramesRef.current / framesRef.current) * 100))
-                );
-
-                // Instant voice advice whenever liveIssues contains a
-                // BAD/WARN severity issue. speakCue enforces a strict
-                // 3-second cooldown between cues internally, so we can
-                // call it on every flagged frame without overlap.
-                if (issues.length > 0) {
-                  lastCueIssueRef.current = issues[0];
-                  speakCue(issues[0], { priority: true });
-                }
-
                 setProgress({
                   reps: out.repCount,
                   currentSetReps: out.currentSetReps,
@@ -266,11 +218,9 @@ export default function WorkoutPanel({
                 // Voice pipeline: set_completed / workout_completed / ongoing_form_check.
                 voiceRef.current.frame(out, targetSets, targetReps);
               }
-              drawPose(c, smoothed);
+              drawPose(c, results.landmarks[0]);
             } else {
-              // Pose lost: reset the EMA smoother so re-entry doesn't snap
-              // from a stale frame, and warn via the throttled voice pipeline.
-              smootherRef.current.reset();
+              // No landmarks this frame: NO POSE DETECTED warning (throttled voice).
               voiceRef.current.noPoseDetected();
             }
           }
@@ -471,13 +421,9 @@ export default function WorkoutPanel({
 
         <div className="space-y-2 mt-2">
           <span className="text-[11px] font-bold tracking-wider text-gray-400 uppercase">PROGRESS TRACKING</span>
-          <MetricCard label="Duration" value={formatDuration(durationSec)} />
           <MetricCard label="Total Reps" value={progress.reps} />
-          <MetricCard
-            label="Set Progress"
-            value={`Set ${Math.min(progress.setsCompleted + 1, targetSets)}/${targetSets} • ${progress.currentSetReps}/${targetReps} reps`}
-          />
-          <MetricCard label="Form Accuracy" value={`${formAccuracy}%`} />
+          <MetricCard label="Current Set Reps" value={`${progress.currentSetReps} / ${targetReps}`} />
+          <MetricCard label="Sets Completed" value={`${progress.setsCompleted} / ${targetSets}`} />
         </div>
 
         {renderExerciseMetrics()}

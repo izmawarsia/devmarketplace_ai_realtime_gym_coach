@@ -1,12 +1,4 @@
-// Backwards-compatible wrapper around the SpeechSynthesis engine.
-import { speakCue, stopSpeech, isSpeaking, ttsSupported } from './speechService';
-
-export async function speak(text, opts) {
-  return speakCue(text, opts);
-}
-
-export function stop() {
-  stopSpeech();
-}
-
-export { isSpeaking, ttsSupported };
+// Server TTS / speech synthesis removed in Phase 5.
+// This file is intentionally a no-op placeholder.
+export async function speak() {}
+export function stop() {}

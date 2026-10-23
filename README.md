@@ -167,10 +167,3 @@ spoken coaching. Without it the app still speaks deterministic rule-based lines.
   a "Coach: Ready to guide your workout!" placeholder when idle.
 - Skeleton overlay now draws joints/connections only when landmark
   visibility > 0.7.
-
-
-## Phase 3 — Stability fixes
-- **EMA landmark smoothing (alpha = 0.7)**: `src/core/smoothing.js` smooths every raw landmark frame before it feeds BOTH the canvas skeleton drawing and the detector `process()` call — no more jitter.
-- **Robust rep state machines**: all 5 detectors tolerate transient visibility drops via 6 grace frames (`BaseExercise.graceFrames`) — state, stage and rep progress are HELD (never reset) during momentary occlusion; per-detector `MIN_VISIBILITY` relaxed 0.7 → 0.5.
-- **Fixed TTS pipeline**: `src/coaching/speechService.js` handles Chrome's stuck-paused / dropped-utterance quirks (`resume()`, `voiceschanged` listener) and enforces a strict 3-second cooldown. Instant voice advice fires whenever `liveIssues` contains a BAD/WARN severity issue.
-- **Metrics panel**: Calories removed entirely from WorkoutPanel. It now shows exactly: Duration (MM:SS), Total Reps, Set Progress, and Form Accuracy (% of frames without form issues).

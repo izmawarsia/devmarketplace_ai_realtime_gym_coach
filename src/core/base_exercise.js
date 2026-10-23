@@ -11,12 +11,6 @@ export class BaseExercise {
     this.targetSets = Math.max(1, Number(options.targetSets ?? 3));
     this.windowSize = options.windowSize ?? 7; // Increased window size for smoother reading
     this.visibilityThreshold = options.visibilityThreshold ?? 0.5; // OpenCV aligned
-    // Grace frames: how many consecutive low-visibility frames the state
-    // machine tolerates WITHOUT resetting. Transient occlusion (e.g. a hand
-    // crossing the camera) must never wipe rep progress or stage state.
-    this.graceFrames = options.graceFrames ?? 6;
-    this.missedFrames = 0;
-    this.lastHeldOutput = null;
     this.state = 'up';
     this.repCount = 0;
     this.currentSetReps = 0;
@@ -36,8 +30,6 @@ export class BaseExercise {
     this.setsCompleted = 0;
     this.metricHistory = {};
     this.smoothedPoints = {};
-    this.missedFrames = 0;
-    this.lastHeldOutput = null;
   }
 
   getPoint(landmarks, idx) {
@@ -49,11 +41,10 @@ export class BaseExercise {
       return { x: lm.x ?? 0, y: lm.y ?? 0, visibility: rawVis };
     }
 
-    // Exponential Moving Average (EMA), alpha = 0.7 per project spec.
-    // 0.7 * new + 0.3 * previous — responsive yet jitter-free.
-    const alpha = 0.7;
+    // Exponential Moving Average (EMA) for coordinate smoothing
+    const alpha = 0.6; // Higher value = faster response, Lower value = smoother movement
     const prev = this.smoothedPoints[idx];
-
+    
     let x = lm.x ?? 0;
     let y = lm.y ?? 0;
 
@@ -133,24 +124,16 @@ export class BaseExercise {
   process(landmarks) {
     const extracted = this.extractMetrics(landmarks);
     if (!extracted) {
-      this.missedFrames += 1;
-      // Grace period: keypoints dropped only momentarily. HOLD the state
-      // machine (no reset, no updateState) and keep returning the last
-      // valid output so the UI metrics don't freeze at 0 / N/A.
-      if (this.missedFrames <= this.graceFrames && this.lastHeldOutput) {
-        return { ...this.lastHeldOutput, held: true };
-      }
       return {
-        metrics: null,
+        metrics: null, 
         repCount: this.repCount,
         currentSetReps: this.currentSetReps,
-        setsCompleted: this.setsCompleted,
+        setsCompleted: this.setsCompleted, 
         isComplete: this.isComplete,
       };
     }
-    this.missedFrames = 0;
     this.updateState(extracted.phaseAngle);
-    const out = {
+    return {
       metrics: extracted.metrics,
       phaseAngle: extracted.phaseAngle,
       repCount: this.repCount,
@@ -158,7 +141,5 @@ export class BaseExercise {
       setsCompleted: this.setsCompleted,
       isComplete: this.isComplete,
     };
-    this.lastHeldOutput = out;
-    return out;
   }
 }
