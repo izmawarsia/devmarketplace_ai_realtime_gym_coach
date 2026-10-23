@@ -351,6 +351,76 @@ Please implement the `src/detectors/shoulder_press.js` detector class extending 
   5. Calculate `back_angle` (`shoulder -> hip -> knee`).
   6. Evaluate `back_arch_status`: `"Neutral"` if `back_angle >= 160`, `"Slight Arch"` if `>= 140`, else `"Excessive Arch"`.
 - Return structured metrics (`reps`, `elbow_angle`, `extension_status`, `back_arch_status`).
+
+Phase 9: Landing Page, Gallery & Team Contact Section Modifications
+
+Please apply the following modifications to the Landing Page, Gallery Section, and Contact Section while strictly maintaining the exact same UI theme, colors, and visual effects:
+
+1. Gallery Images Replacement & UI Effects:
+   - Use the 3 currently attached images (image3.png, image4.png, image5.png) and map, reuse, or assign them appropriately across all 6 exercise gallery slots to populate exercise-1.png through exercise-6.png inside the public/images/ path.
+   - Keep all existing visual UI effects intact: Retain the glowing overlay, corner markers, subtle floating/bobbing animation (slight up-down motion), and glowing line overlays on top of the images exactly as they appear right now.
+
+2. Background Grid Visibility:
+   - Increase the contrast and opacity of the background grid lines across the landing page so that the grid pattern is clearly visible instead of looking completely pitch black.
+
+3. Contact / Team Section Update (Two Profiles):
+   - Change the heading from "Built by a human" to "Meet the Developers" or "Built by the Team".
+   - Maintain exact UI design and icon styling: Keep the exact same card layout, border glow, dark cards, hover animation, and icon styles.   
+   - Create two side-by-side profile cards (one for Izma Warsia and one for Safa Khurram).
+   - Remove Twitter/X from both cards and keep only LinkedIn, GitHub, and Gmail icons/buttons.   
+   - Redirect Action: Ensure clicking each icon opens the corresponding member's profile in a new tab (target="_blank").
+   - Developer 1: Izma Warsia
+     - LinkedIn Icon: https://www.linkedin.com/in/izmawarsia
+     - GitHub Icon: https://github.com/izmawarsia
+     - Gmail Icon: mailto:izmawarsia15@gmail.com
+   - Developer 2: Safa Khurram
+     - LinkedIn Icon: https://www.linkedin.com/in/safa-khurram
+     - GitHub Icon: https://github.com/safakhurram
+     - Gmail Icon: mailto:safakhurram722@gmail.com
+
+Phase 10: Auth Flow Error Handling, Loading States & Google OAuth Fixes
+
+Please apply the following specific fixes to the Sign In, Sign Up, OTP verification components, and Google OAuth user synchronization flow:
+
+---
+
+#### 1. OTP Verification Processing & False Error Fix
+- Loading State: When the user enters the OTP code and clicks "Verify", immediately set `isSubmitting = true` and show a loading spinner / "Verifying code..." state on the button.
+- Prevent False Errors: Wait asynchronously for `supabase.auth.verifyOtp()` and the subsequent session resolution before validating errors.
+- Valid vs Invalid Handling: 
+  - If verification succeeds, keep the spinner active while redirecting to `/dashboard` or `/auth` (prevent showing "Token expired/invalid" during the session setup delay).
+  - Only render the error alert "Your code is invalid or has expired" if `verifyOtp` explicitly returns an authentication error.
+
+---
+
+#### 2. Clean Error Handling for Unregistered Sandbox Emails (Fix Error [0])
+- Wrap all `signInWithOtp` and `signUp` calls in structured `try/catch` blocks.
+- If Supabase/Resend throws an API error (or HTTP status 0/400 due to domain restrictions), extract `error.message` properly instead of rendering `Error [0]`.
+- Display a clear toast message:
+  "Email delivery restriction: Sandbox mode supports registered admin email during testing."
+
+---
+
+#### 3. Already Registered Email Check on Sign Up
+- On Sign Up form submission, check if the email already exists in `public.users` or catch the Supabase Auth signup error (`user_already_exists`).
+- If the email exists, stop the OTP trigger and display an inline warning message:
+  "This email is already registered. Please sign in instead."
+- Provide a direct button/link to switch to the Sign In view.
+
+---
+
+#### 4. Fix Google OAuth Duplicate Username Constraint Error
+- Unique Username Generation for OAuth:
+  - When extracting `username` from Google profile metadata (e.g., full name or email prefix), append a random 4-digit number or use the user ID suffix if the raw username already exists.
+  - Example logic: `const uniqueUsername = `${rawUsername}_${Math.floor(1000 + Math.random() * 9000)}`;`
+
+- Database Upsert Strategy:
+  - Use `upsert` with `onConflict: 'id'` instead of a raw `insert` when syncing Google Auth users into the `public.users` table.
+  - Handle unique constraint errors (`users_username_key`) by appending random characters and retrying the database insert automatically without crashing the app UI.
+
+- Error Boundaries & Redirects:
+  - If a sync error occurs during OAuth callback, gracefully clear the broken temporary state and redirect the user back to `/auth` with a clear message instead of getting trapped on the unhandled error screen.
+
 ## Code Gig Deliverables (DevMarketplace Requirement)
 
 The agent must produce two modular, reusable code modules:
