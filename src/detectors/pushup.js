@@ -16,7 +16,7 @@ export class PushupDetector extends BaseExercise {
     });
     this.DOWN_THRESHOLD = 90;
     this.UP_THRESHOLD = 160;
-    this.MIN_VISIBILITY = 0.5; // relaxed: grace frames handle transient drops
+    this.MIN_VISIBILITY = 0.7;
     this.HIP_SAG_TOLERANCE = 0.08;
   }
 

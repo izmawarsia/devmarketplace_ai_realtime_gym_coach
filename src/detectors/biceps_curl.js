@@ -16,7 +16,7 @@ export class BicepsCurlDetector extends BaseExercise {
     });
     this.UP_THRESHOLD = 50;
     this.DOWN_THRESHOLD = 160;
-    this.MIN_VISIBILITY = 0.5; // relaxed: grace frames handle transient drops
+    this.MIN_VISIBILITY = 0.7;
     this.ELBOW_DRIFT_TOLERANCE = 0.06;
     this.SWING_THRESHOLD = 15;
     this._flexed = false;
