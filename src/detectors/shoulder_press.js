@@ -15,7 +15,7 @@ export class ShoulderPressDetector extends BaseExercise {
     });
     this.UP_THRESHOLD = 160;
     this.DOWN_THRESHOLD = 90;
-    this.MIN_VISIBILITY = 0.7;
+    this.MIN_VISIBILITY = 0.5; // relaxed: grace frames handle transient drops
     this.state = 'down'; // inverted: start low, press up first
   }
 
