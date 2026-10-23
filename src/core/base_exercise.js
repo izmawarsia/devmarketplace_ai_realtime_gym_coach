@@ -61,6 +61,13 @@ export class BaseExercise {
     return point && point.visibility >= threshold;
   }
 
+  // Python `_safe_angle` parity: angle of a vector from vertical, in degrees.
+  // Guards against zero-length vectors (returns 90° when dy is ~0).
+  safeAngle(dx, dy) {
+    if (!dy || Math.abs(dy) < 1e-9) return 90.0;
+    return Math.abs(Math.atan2(dx, dy) * (180 / Math.PI));
+  }
+
   calculateAngle(a, b, c) {
     if (!a || !b || !c) return 0;
     const ba = { x: a.x - b.x, y: a.y - b.y };

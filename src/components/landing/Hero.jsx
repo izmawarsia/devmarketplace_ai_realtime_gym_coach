@@ -29,7 +29,7 @@ export default function Hero({ onTryLive }) {
       <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row">
         <button
           onClick={onTryLive}
-          className="rounded-full bg-[#f5a623] px-8 py-3 text-sm font-bold uppercase tracking-wider text-black shadow-[0_0_30px_rgba(245,166,35,0.35)] transition hover:bg-amber-400 hover:shadow-[0_0_45px_rgba(245,166,35,0.5)]"
+          className="btn-amber rounded-full px-8 py-3 text-sm font-bold uppercase tracking-wider shadow-[0_0_30px_rgba(245,166,35,0.35)]"
         >
           Try It Live
         </button>

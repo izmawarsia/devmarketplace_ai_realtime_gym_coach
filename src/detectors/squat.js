@@ -1,72 +1,67 @@
 import { BaseExercise } from '../core/base_exercise.js';
 
+// Python parity:
+//   DOWN_THRESHOLD = 100, UP_THRESHOLD = 160, MIN_VISIBILITY = 0.7
+//   Dynamic side selection by knee visibility; knee_angle(hip,knee,ankle);
+//   back_angle(shoulder,hip,knee).
 export class SquatDetector extends BaseExercise {
   constructor(options = {}) {
     super('squats', {
       upAngle: 160,
       downAngle: 100,
-      visibilityThreshold: 0.3,
+      visibilityThreshold: 0.5,
       ...options,
     });
-  }
-
-  // Enforce rep counting logic: Knee angle < 100 = down, >= 160 = up (rep counted on up)
-  updateState(phaseAngle) {
-    if (this.isComplete || phaseAngle == null || Number.isNaN(phaseAngle)) return;
-    // Rep counted ONLY on standing up after squat (knee angle >= up threshold)
-    // Only increment rep when coming from down (squat) to up (stand)
-    if (this.state === 'down' && phaseAngle >= this.upAngle) {
-      this.state = 'up';
-      this.repCount += 1;
-      this.currentSetReps += 1;
-      if (this.currentSetReps >= this.targetReps) {
-        this.setsCompleted += 1;
-        this.currentSetReps = 0;
-      }
-      if (this.isComplete) this.state = 'complete';
-      return;
-    }
-    // Down phase if knee angle < down threshold
-    // Down phase if knee angle < down threshold
-    if (this.state === 'up' && phaseAngle < this.downAngle) {
-      this.state = 'down';
-    }
+    this.DOWN_THRESHOLD = 100;
+    this.UP_THRESHOLD = 160;
+    this.MIN_VISIBILITY = 0.7;
   }
 
   extractMetrics(landmarks) {
-    const side = this.pickSide(
-      landmarks,
-      [11, 23, 25, 27],
-      [12, 24, 26, 28]
-    );
+    // Dynamic side selection: compare knee visibility (25 vs 26).
+    const leftKneeVis = landmarks?.[25]?.visibility ?? 0;
+    const rightKneeVis = landmarks?.[26]?.visibility ?? 0;
+    const left = leftKneeVis >= rightKneeVis;
 
-    const shoulder = this.getPoint(landmarks, side === 0 ? 11 : 12);
-    const hip = this.getPoint(landmarks, side === 0 ? 23 : 24);
-    const knee = this.getPoint(landmarks, side === 0 ? 25 : 26);
-    const ankle = this.getPoint(landmarks, side === 0 ? 27 : 28);
+    const shoulder = this.getPoint(landmarks, left ? 11 : 12);
+    const hip = this.getPoint(landmarks, left ? 23 : 24);
+    const knee = this.getPoint(landmarks, left ? 25 : 26);
+    const ankle = this.getPoint(landmarks, left ? 27 : 28);
 
-    if (!this.visible(shoulder) || !this.visible(hip) || !this.visible(knee) || !this.visible(ankle)) {
-      // Not enough lower-body landmarks; prompt user in UI.
-      return null;
+    const vis = this.MIN_VISIBILITY;
+    if (
+      hip.visibility < vis ||
+      knee.visibility < vis ||
+      ankle.visibility < vis ||
+      shoulder.visibility < this.visibilityThreshold
+    ) {
+      return null; // key landmarks not confidently visible
     }
 
     const kneeAngle = this.smooth('kneeAngle', this.calculateAngle(hip, knee, ankle));
     const backAngle = this.smooth('backAngle', this.calculateAngle(shoulder, hip, knee));
+    if (Number.isNaN(kneeAngle) || Number.isNaN(backAngle)) return null;
 
-    let depth = 'STANDING';
-    if (kneeAngle < 90) depth = 'GOOD DEPTH';
-    else if (kneeAngle < 160) depth = 'TOO HIGH';
-
-    // Handle missing landmarks gracefully in metrics
-    if (Number.isNaN(kneeAngle) || Number.isNaN(backAngle)) {
-      return null;
+    // depth_status parity: stage down -> GOOD DEPTH / TOO HIGH; up -> STANDING.
+    let depthStatus;
+    if (this.state === 'down') {
+      depthStatus = kneeAngle <= this.DOWN_THRESHOLD ? 'GOOD DEPTH' : 'TOO HIGH';
+    } else if (this.state === 'up' || this.state === 'complete') {
+      depthStatus = 'STANDING';
+    } else {
+      depthStatus = 'N/A';
     }
 
     return {
       metrics: {
+        // Python-parity keys
+        knee_angle: Math.round(kneeAngle),
+        back_angle: Math.round(backAngle),
+        depth_status: depthStatus,
+        // UI keys (strict preservation of existing metric panel)
         kneeAngle: Math.round(kneeAngle),
         backAngle: Math.round(backAngle),
-        depth,
+        depth: depthStatus,
       },
       phaseAngle: kneeAngle,
     };

@@ -5,6 +5,8 @@ import { EXERCISES } from '../data/exercises';
 import { createDetector } from '../detectors/index';
 import { drawPose } from '../core/drawing';
 import { analyzeForm, FORM_RULES, SEVERITY } from '../analysis/formRules';
+import { createVoicePipeline } from '../services/voicePipeline';
+import { cancelSpeech } from '../services/tts';
 
 function MetricCard({ label, value, status }) {
   const bad = status === SEVERITY.BAD;
@@ -65,6 +67,9 @@ export default function WorkoutPanel({
 
   const [modelLoading, setModelLoading] = useState(false);
   const [cameraError, setCameraError] = useState(null);
+  const [cameraOn, setCameraOn] = useState(false);
+  const [language, setLanguage] = useState('English');
+  const [coachText, setCoachText] = useState(null);
   const [liveMetrics, setLiveMetrics] = useState({});
   const [metricStatus, setMetricStatus] = useState({});
   const [liveIssues, setLiveIssues] = useState([]);
@@ -81,11 +86,14 @@ export default function WorkoutPanel({
       setLiveIssues([]);
       setProgress({ reps: 0, currentSetReps: 0, setsCompleted: 0 });
       setCameraError(null);
+      setCoachText(null);
+      // Camera never auto-starts: user must click "Start Camera".
+      setCameraOn(false);
     }
   }, [active]);
 
   useEffect(() => {
-    if (!active) {
+    if (!active || !cameraOn) {
       runningRef.current = false;
       return;
     }
@@ -96,6 +104,15 @@ export default function WorkoutPanel({
 
     const poseRef = { current: null };
     const detectorRef = { current: null };
+    const voiceRef = {
+      current: createVoicePipeline({
+        exerciseId: exercise.id,
+        exerciseName: exercise.name,
+        language,
+        onFeedback: (line) => setCoachText(line),
+      }),
+    };
+    voiceRef.current.workoutStarted();
 
     setModelLoading(true);
     setCameraError(null);
@@ -197,8 +214,14 @@ export default function WorkoutPanel({
                     formIssues: issues,
                   });
                 }
+
+                // Voice pipeline: set_completed / workout_completed / ongoing_form_check.
+                voiceRef.current.frame(out, targetSets, targetReps);
               }
               drawPose(c, results.landmarks[0]);
+            } else {
+              // No landmarks this frame: NO POSE DETECTED warning (throttled voice).
+              voiceRef.current.noPoseDetected();
             }
           }
 
@@ -222,10 +245,12 @@ export default function WorkoutPanel({
     return () => {
       cancelled = true;
       runningRef.current = false;
+      voiceRef.current?.dispose();
+      cancelSpeech();
       if (raf) cancelAnimationFrame(raf);
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
-  }, [active, exercise, targetReps]);
+  }, [active, cameraOn, language, exercise, targetReps]);
 
   const renderExerciseMetrics = () => {
     const spec = FORM_RULES[exercise.id];
@@ -389,7 +414,7 @@ export default function WorkoutPanel({
 
         <button
           onClick={onEndWorkout}
-          className="flex items-center justify-center gap-2 rounded-xl bg-amber-500 py-3.5 text-xs font-black tracking-widest text-black shadow-lg shadow-amber-500/20 transition-all hover:bg-amber-400 hover:shadow-[0_0_30px_rgba(245,166,35,0.45)] hover:-translate-y-0.5 active:scale-[0.98] uppercase"
+          className="btn-amber flex items-center justify-center gap-2 rounded-xl py-3.5 text-xs font-black tracking-widest uppercase"
         >
           <Square size={14} className="fill-black" /> END WORKOUT
         </button>
@@ -417,6 +442,17 @@ export default function WorkoutPanel({
         </div>
 
         <div className="relative flex-1 rounded-xl border border-white/10 bg-black overflow-hidden">
+          {!cameraOn && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/80 text-center p-6">
+              <span className="rounded-2xl bg-[#181d28] p-3 text-amber-400 border border-amber-500/20">
+                <Video size={24} />
+              </span>
+              <p className="text-sm font-semibold text-white">Camera is off</p>
+              <p className="max-w-xs text-xs text-gray-400">
+                Click <span className="text-amber-400 font-semibold">Start Camera</span> below to allow camera access and begin pose tracking.
+              </p>
+            </div>
+          )}
           <video
             ref={videoRef}
             autoPlay
@@ -430,19 +466,54 @@ export default function WorkoutPanel({
           />
         </div>
 
-        <div className="flex items-center justify-between pt-4 border-t border-white/5 mt-2">
-          <p className="text-xs text-gray-500">
-            {cameraError
-              ? 'Tracking paused'
-              : modelLoading
-              ? 'Initializing camera and pose model…'
-              : 'Camera active • MediaPipe pose tracking running locally'}
+        <div className="coach-feedback-banner mt-3 flex items-center gap-2.5 rounded-xl border border-amber-500/25 bg-[#121620] px-4 py-2.5">
+          <span className="text-base leading-none">🤖</span>
+          <p className={`text-xs font-medium ${coachText ? 'text-amber-300' : 'text-gray-500 italic'}`}>
+            {coachText || 'Coach: Ready to guide your workout!'}
           </p>
-          <div className="flex items-center gap-2 text-xs text-gray-400">
-            <span>SELECT DEVICE:</span>
-            <select className="rounded-lg bg-[#161b22] px-3 py-1.5 text-white border border-white/10 focus:outline-none">
-              <option>Default Camera</option>
-            </select>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-white/5 mt-2">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setCameraOn((on) => !on)}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-black tracking-wider uppercase transition active:scale-95 ${
+                cameraOn
+                  ? 'bg-red-500/15 text-red-400 border border-red-500/40 hover:bg-red-500/25'
+                  : 'btn-amber'
+              }`}
+            >
+              {cameraOn ? <Square size={12} className="fill-current" /> : <Video size={14} />}
+              {cameraOn ? 'Stop Camera' : 'Start Camera'}
+            </button>
+            <p className="text-xs text-gray-500">
+              {cameraError
+                ? 'Tracking paused'
+                : !cameraOn
+                ? 'Camera off — press Start Camera to begin'
+                : modelLoading
+                ? 'Initializing camera and pose model…'
+                : 'Camera active • MediaPipe pose tracking running locally'}
+            </p>
+          </div>
+          <div className="flex items-center gap-4 text-xs text-gray-400">
+            <div className="flex items-center gap-2">
+              <span>LANGUAGE:</span>
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                className="rounded-lg bg-[#161b22] px-3 py-1.5 text-white border border-white/10 focus:outline-none"
+              >
+                <option>English</option>
+                <option>Roman Urdu</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span>SELECT DEVICE:</span>
+              <select className="rounded-lg bg-[#161b22] px-3 py-1.5 text-white border border-white/10 focus:outline-none">
+                <option>Default Camera</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>

@@ -34,8 +34,8 @@ export function drawPose(canvas, landmarks) {
   const lineWidth = Math.max(3, Math.min(6, scale * 0.012));
   const radius = Math.max(3, Math.min(5, scale * 0.009));
 
-  // OpenCV style strict visibility threshold (0.5 minimum)
-  const visible = (p) => p && (p.visibility == null || p.visibility >= 0.5);
+  // Strict visibility threshold: draw joints/connections only when visibility > 0.7
+  const visible = (p) => p && (p.visibility == null || p.visibility > 0.7);
 
   ctx.save();
   ctx.lineCap = 'round';

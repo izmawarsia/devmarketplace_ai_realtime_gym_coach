@@ -36,8 +36,8 @@ export default function Contact() {
 
       <footer className="border-t border-white/5 py-8 text-center">
         <p className="font-mono text-xs tracking-widest text-gray-600">
-          <span className="text-[#f5a623]">(</span>AI GYM COACH<span className="text-[#f5a623]">)</span>
-          {' '}· © {new Date().getFullYear()} AI GYM Trainer. All rights reserved.
+          <span className="landing-gradient-text font-bold">APNA AI COACH</span>
+          {' '}· © {new Date().getFullYear()} Apna AI Coach. All rights reserved.
         </p>
       </footer>
     </>

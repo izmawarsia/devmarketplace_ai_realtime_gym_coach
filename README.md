@@ -117,3 +117,53 @@ from workspace Secrets, so the app runs there without a local `.env` file.
   flag is set the session is treated as unauthenticated so the dashboard and
   other protected views stay blocked until the code is verified. Cancelling
   the 2FA screen signs the user out and clears the flag.
+
+## Phase 8 — Backend logic & voice coach parity
+
+- **Detectors** (`src/detectors/*`): exact Python-parity thresholds and metrics.
+  All detectors use `MIN_VISIBILITY = 0.7` for key joints and return both
+  Python-parity metric keys (`knee_angle`, `depth_status`, `shoulder_status`,
+  `swing_status`, `front_knee_angle`, `torso_angle`, `balance_status`,
+  `body_alignment`, `hip_status`, `extension_status`, `back_arch_status`) and
+  the legacy UI metric keys so the existing panels render unchanged.
+  - Squat: DOWN=100 / UP=160, dynamic side by knee visibility.
+  - Biceps curl: UP=50 / DOWN=160, `ELBOW_DRIFT_TOLERANCE=0.06`, `SWING_THRESHOLD=15`.
+  - Lunges: DOWN=100 / UP=160, `BALANCE_TOLERANCE=0.10`, front leg = smaller knee angle.
+  - Push-up: DOWN=90 / UP=160, `HIP_SAG_TOLERANCE=0.08`.
+  - Shoulder press: UP=160 / DOWN=90, inverted state machine (press up first).
+- **MediaPipe**: `pose_landmarker_full.task`, `runningMode: 'VIDEO'`,
+  `detectForVideo`, 0.7 detection/presence/tracking confidences.
+- **Supabase**: completed workouts insert into `exercises`
+  (`exercise_name, reps, sets, time`) with the user's UUID; history is fetched
+  per `user_id`, newest first (`src/services/supabase.js`).
+- **AI voice coach**: `src/config/coachPrompt.js` (strict 12-word, second-person
+  trainer prompt), `src/services/aiCoach.js` (Groq `llama-3.3-70b-versatile`,
+  temperature 0.4, last-10-message history, `VITE_GROQ_API_KEY`,
+  `dangerouslyAllowBrowser: true`, deterministic local fallback when the key is
+  missing), `src/services/tts.js` (Web Speech API), and
+  `src/services/voicePipeline.js` (per-exercise `_find_form_issue` mapping,
+  5-second cooldown on minor issues, auto-trigger on `workout_started`,
+  `set_completed`, `workout_completed`, `no_pose_detected`,
+  `ongoing_form_check`).
+
+### Secrets
+
+Add `VITE_GROQ_API_KEY` in the workspace Secrets panel to enable LLM-generated
+spoken coaching. Without it the app still speaks deterministic rule-based lines.
+
+### Phase 8 updates (camera toggle, language, coach banner)
+
+- **Manual camera control**: the workout session no longer starts the webcam
+  automatically. A **Start Camera / Stop Camera** toggle in the video footer
+  (left of the device dropdown) requests `getUserMedia` only on click and
+  stops all tracks when turned off. An "Camera is off" overlay shows in the
+  video frame until started.
+- **Guidance language dropdown** (`English` / `Roman Urdu`) next to the device
+  selector. Roman Urdu switches the Groq system prompt to Roman-Urdu cues
+  (e.g. "Peeth seedhi rakho"), uses `ur-PK` Web Speech synthesis, and provides
+  Roman Urdu deterministic fallback lines when no Groq key is set.
+- **Live AI coach text banner** (`.coach-feedback-banner`) below the video
+  shows the latest coach line in real time, alongside the spoken audio, with
+  a "Coach: Ready to guide your workout!" placeholder when idle.
+- Skeleton overlay now draws joints/connections only when landmark
+  visibility > 0.7.

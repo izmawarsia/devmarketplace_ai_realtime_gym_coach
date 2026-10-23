@@ -8,6 +8,7 @@ import ResetPassword from './components/ResetPassword.jsx';
 import WorkoutPanel from './components/WorkoutPanel.jsx';
 import { EXERCISES } from './data/exercises.js';
 import { fetchHistory, saveWorkout } from './data/historyClient.js';
+import { fetchExerciseHistory, saveExerciseRecord } from './services/supabase.js';
 import { getConfigError } from './lib/supabaseClient.js';
 
 function FullScreenLoader({ children }) {
@@ -51,8 +52,35 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [history, setHistory] = useState([]);
 
+  // Load history: Supabase `exercises` rows (source of truth) merged with
+  // any locally cached sessions.
   useEffect(() => {
-    if (user?.name) setHistory(fetchHistory(user.name));
+    let cancelled = false;
+    async function load() {
+      const local = user?.name ? fetchHistory(user.name) : [];
+      let rows = local;
+      if (user?.id) {
+        const { data, error } = await fetchExerciseHistory(user.id);
+        if (!cancelled && !error && Array.isArray(data)) {
+          const remote = data.map((r) => ({
+            id: `db-${r.id}`,
+            date: (r.created_at || '').slice(0, 10),
+            exercise: r.exercise_name,
+            sets: r.sets,
+            reps: r.reps,
+            totalReps: r.reps,
+            accuracy: 100,
+            calories: 0,
+            durationMin: Math.max(1, Math.round((r.time ?? 0) / 60) || 1),
+            formIssues: [],
+          }));
+          rows = [...remote, ...local].slice(0, 100);
+        }
+      }
+      if (!cancelled) setHistory(rows);
+    }
+    if (user) load();
+    return () => { cancelled = true; };
   }, [user]);
 
   const configError = getConfigError();
@@ -106,6 +134,15 @@ export default function App() {
         calories: 0,
         durationMin: 1,
         formIssues: session.formIssues || [],
+      });
+      // Persist to Supabase `exercises` with the user's UUID.
+      saveExerciseRecord(user.id, {
+        exerciseName: exercise.name,
+        reps: session.reps,
+        sets: session.targetSets,
+        time: Math.max(60, Math.round(session.elapsed ?? 60)),
+      }).then(({ error }) => {
+        if (error) console.warn('[exercises] save failed:', error.message);
       });
       setHistory(fetchHistory(user.name));
     }

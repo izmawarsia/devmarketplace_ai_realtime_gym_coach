@@ -216,8 +216,141 @@ Implement a sleek, modern, dark-themed Landing Page in React matching the provid
 
 ---
 
-## Application Navigation Logic
+Phase : 08 Execute Phase 8 Completion based on AGENTS.md (Backend Logic & Implementation Flow)
+### TASK: Implement Robust BaseExercise and Squat Detector in JavaScript
 
+Please update and implement the core exercise detection system in JavaScript matching our precise Python mathematical logic and MediaPipe Pose Landmarker specifications.
+
+---
+
+#### 1. MediaPipe Model & Video Streaming Configuration
+- **Model Variant:** Use the full accuracy model (`pose_landmarker_full.task`) instead of the lite model to ensure high precision for distance and joint tracking.
+- **Running Mode:** Must be initialized with `runningMode: 'VIDEO'` and processed via `detectForVideo(videoElement, performance.now())`.
+- **Confidence Thresholds:** Set strict thresholds to eliminate jitter and flickering:
+  - `minPoseDetectionConfidence: 0.7`
+  - `minPosePresenceConfidence: 0.7`
+  - `minTrackingConfidence: 0.7`
+
+---
+
+#### 2. BaseExercise Class Implementation (`src/core/base_exercise.js`)
+Implement the shared state machine and vector math:
+- **Landmarks Support:** Handle all 33 standard MediaPipe pose landmarks (`0` to `32`), ensuring lower-body landmarks (hips `23, 24`, knees `25, 26`, ankles `27, 28`) have robust visibility checks (`>= 0.5`).
+- **Angle Calculation Math:** Implement dot product and vector magnitude calculations identically to Python:
+  ```javascript
+  calculateAngle(a, b, c) {
+    const ax = a.x - b.x, ay = a.y - b.y;
+    const cx = c.x - b.x, cy = c.y - b.y;
+    const dot = ax * cx + ay * cy;
+    const magA = Math.hypot(ax, ay);
+    const magC = Math.hypot(cx, cy);
+    if (!magA || !magC) return 0.0;
+    const cos = Math.max(-1.0, Math.min(1.0, dot / (magA * magC)));
+    return Math.acos(cos) * (180 / Math.PI);
+  } ### TASK: Implement `SquatDetector` in JavaScript 
+
+Please implement the `src/detectors/squat.js` detector class in JavaScript, extending `BaseExercise`, with exact parity to our Python squat detection logic, thresholds, and calculations.
+
+---
+
+#### 1. Constants & Thresholds
+- `DOWN_THRESHOLD = 100`
+- `UP_THRESHOLD = 160`
+- `MIN_VISIBILITY = 0.7`
+- Landmark Indices:
+  - Left: Hip (`23`), Knee (`25`), Ankle (`27`), Shoulder (`11`)
+  - Right: Hip (`24`), Knee (`26`), Ankle (`28`), Shoulder (`12`)
+
+---
+
+#### 2. Side-Selection & Knee/Back Angle Logic
+- Calculate left and right knee angles using `calculateAngle(hip, knee, ankle)`.
+- Compare visibility (`landmark[knee].visibility`) for left and right legs to dynamically choose the clearer/more visible side (just like the Python implementation).
+- Calculate `back_angle` using `calculateAngle(shoulder, hip, knee)` for the chosen active side.
+- Verify that `hip`, `knee`, and `ankle` landmarks all satisfy `visibility >= MIN_VISIBILITY`.
+
+---
+
+#### 3. State Machine & Rep Counting (`process(landmarks)`)
+- If key landmarks are visible:
+  - If `knee_angle < DOWN_THRESHOLD`, set stage to `"down"`.
+  - If `knee_angle >= UP_THRESHOLD` and stage was `"down"`, set stage to `"up"` and increment rep count / current set reps according to `BaseExercise`.
+- Determine `depth_status`:
+  - If stage is `"down"`, return `"GOOD DEPTH"` if `knee_angle <= DOWN_THRESHOLD`, else `"TOO HIGH"`.
+  - If stage is `"up"`, return `"STANDING"`.
+  - Otherwise `"N/A"`.
+- Return structured metrics object matching Python output:
+  ```javascript
+  {
+    metrics: {
+      knee_angle: Math.round(kneeAngle),
+      back_angle: Math.round(backAngle),
+      depth_status: depthStatus
+    },
+    repCount: this.repCount,
+    currentSetReps: this.currentSetReps,
+    setsCompleted: this.setsCompleted,
+    isComplete: this.isComplete
+  }                                                                                                 Implement `BicepsCurlDetector` in JavaScript
+
+Please implement the `src/detectors/biceps_curl.js` detector class extending `BaseExercise`, with exact parity to our Python biceps curl implementation.
+
+#### Requirements & Constants:
+- Thresholds: `UP_THRESHOLD = 50`, `DOWN_THRESHOLD = 160`, `MIN_VISIBILITY = 0.7`, `ELBOW_DRIFT_TOLERANCE = 0.06`, `SWING_THRESHOLD = 15`.
+- Landmark Indices: Left/Right shoulders (11, 12), elbows (13, 14), wrists (15, 16), hips (23, 24).
+- **Logic Details:**
+  1. Dynamically select the more visible arm by comparing elbow visibilities.
+  2. Calculate `elbow_angle` using `calculateAngle(shoulder, elbow, wrist)`.
+  3. State machine: Stage becomes `"up"` when `elbow_angle < UP_THRESHOLD`, and transitions to `"down"` incrementing reps when `elbow_angle > DOWN_THRESHOLD`.
+  4. Check `shoulder_status`: Compare `elbow.x` and `shoulder.x` to detect `ELBOW DRIFTING` if absolute difference > `ELBOW_DRIFT_TOLERANCE`.
+  5. Check `swing_status`: Calculate torso angle from vertical using midpoints of shoulders and hips with `_safe_angle(dx, dy)`. If angle > `SWING_THRESHOLD`, mark as `"SWINGING"`, else `"NO SWING"`.
+- Return structured metrics output (`reps`, `elbow_angle`, `shoulder_status`, `swing_status`).
+
+### TASK: Implement `LungesDetector` in JavaScript 
+
+Please implement the `src/detectors/lunges.js` detector class extending `BaseExercise`, matching the Python lunges logic.
+
+#### Requirements & Constants:
+- Thresholds: `DOWN_THRESHOLD = 100`, `UP_THRESHOLD = 160`, `MIN_VISIBILITY = 0.7`, `BALANCE_TOLERANCE = 0.10`.
+- Landmark Indices: Hips (23, 24), Knees (25, 26), Ankles (27, 28), Shoulders (11, 12).
+- **Logic Details:**
+  1. Calculate both left and right knee angles (`hip -> knee -> ankle`).
+  2. Select the front leg (the one with the smaller or equal knee angle).
+  3. Track state: Stage becomes `"down"` when `front_knee_angle < DOWN_THRESHOLD`, and transitions to `"up"` incrementing reps when `front_knee_angle > UP_THRESHOLD`.
+  4. Calculate `torso_angle` using `calculateAngle(shoulder, front_hip, front_knee)`.
+  5. Check `balance_status`: Compute lateral offset between shoulder midpoint x and hip midpoint x. If offset <= `BALANCE_TOLERANCE`, status is `"BALANCED"`, else `"OFF BALANCE"`.
+- Return structured metrics (`reps`, `front_knee_angle`, `torso_angle`, `balance_status`).
+
+### TASK: Implement `PushUpDetector` in JavaScript 
+
+Please implement the `src/detectors/pushup.js` detector class extending `BaseExercise`, matching the Python push-up logic.
+
+#### Requirements & Constants:
+- Thresholds: `DOWN_THRESHOLD = 90`, `UP_THRESHOLD = 160`, `MIN_VISIBILITY = 0.7`, `HIP_SAG_TOLERANCE = 0.08`.
+- Landmark Indices: Shoulders (11, 12), Elbows (13, 14), Wrists (15, 16), Hips (23, 24), Ankles (27, 28).
+- **Logic Details:**
+  1. Select active side based on elbow visibility.
+  2. Calculate `elbow_angle` and `body_angle` (`shoulder -> hip -> ankle`).
+  3. Track state: Stage becomes `"down"` when `elbow_angle < DOWN_THRESHOLD`, and transitions to `"up"` incrementing reps when `elbow_angle > UP_THRESHOLD`.
+  4. Evaluate `body_alignment`: `"Straight"` if `body_angle > 160`, `"Slight Bend"` if `> 140`, else `"Poor Form"`.
+  5. Evaluate `hip_status`: Compare actual `hip_y` with expected midpoint `(shoulder_y + ankle_y) / 2`. If deviation <= `HIP_SAG_TOLERANCE`, status is `"LEVEL"`, if positive it's `"SAGGING"`, else `"PIKED UP"`.
+- Return structured metrics (`reps`, `elbow_angle`, `body_alignment`, `hip_status`).
+
+### TASK: Implement `ShoulderPressDetector` in JavaScript matching Python Logic & Thresholds
+
+Please implement the `src/detectors/shoulder_press.js` detector class extending `BaseExercise`, matching the Python shoulder press logic.
+
+#### Requirements & Constants:
+- Thresholds: `UP_THRESHOLD = 160`, `DOWN_THRESHOLD = 90`, `MIN_VISIBILITY = 0.7`.
+- Landmark Indices: Shoulders (11, 12), Elbows (13, 14), Wrists (15, 16), Hips (23, 24), Knees (25, 26).
+- **Logic Details:**
+  1. Select active side based on elbow visibility.
+  2. Calculate `elbow_angle` (`shoulder -> elbow -> wrist`).
+  3. Track state: Stage becomes `"up"` when `elbow_angle > UP_THRESHOLD`, and transitions to `"down"` incrementing reps when `elbow_angle < DOWN_THRESHOLD` (after being up).
+  4. Evaluate `extension_status`: `"FULL EXTENSION"` if `elbow_angle >= 160`, `"NEARLY EXTENDED"` if `>= 130`, `"PRESSING"` if `>= 90`, else `"START POSITION"`.
+  5. Calculate `back_angle` (`shoulder -> hip -> knee`).
+  6. Evaluate `back_arch_status`: `"Neutral"` if `back_angle >= 160`, `"Slight Arch"` if `>= 140`, else `"Excessive Arch"`.
+- Return structured metrics (`reps`, `elbow_angle`, `extension_status`, `back_arch_status`).
 ## Code Gig Deliverables (DevMarketplace Requirement)
 
 The agent must produce two modular, reusable code modules:
